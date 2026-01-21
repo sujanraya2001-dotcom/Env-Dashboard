@@ -175,7 +175,7 @@ const FIRESTORE_LIMIT_DOCS = 8000;
 const GLOBAL_LIMIT_DOCS = 300;
 
 // For day/range window queries (avoid missing half-day)
-const WINDOW_LIMIT_DOCS = 50000;
+const WINDOW_LIMIT_DOCS = 8000;
 
 // Safety: prevent huge range selection that can freeze UI
 const MAX_RANGE_MS = 48 * 60 * 60 * 1000; // 48 hours
