@@ -172,7 +172,7 @@ let RANGE_INPUT_TIMER = null;
 const RANGE_INPUT_DEBOUNCE_MS = 200;
 
 const FIRESTORE_LIMIT_DOCS = 20000;
-const GLOBAL_LIMIT_DOCS = 5000;
+const GLOBAL_LIMIT_DOCS = 300;
 
 // For day/range window queries (avoid missing half-day)
 const WINDOW_LIMIT_DOCS = 50000;
