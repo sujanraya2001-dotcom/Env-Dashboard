@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Env Dashboard</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brandTitle">Environment Dashboard</div>
+      <div class="brandSub">Realtime Environment Monitoring</div>
+    </div>
+
+    <div class="controls">
+      <div class="control">
+        <div class="controlLabel">Device</div>
+        <select id="deviceSelect"></select>
+      </div>
+
+      <div class="control">
+        <div class="controlLabel">Status</div>
+        <div class="statusWrap">
+          <span id="deviceStatusDot" class="statusDot offline"></span>
+          <span id="deviceStatusText" class="statusText">Offline</span>
+        </div>
+      </div>
+
+      <div class="control right">
+        <div class="controlLabel">Now</div>
+        <div id="nowDateTime" class="nowTime">--</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- ===== AI language + status ===== -->
+    <section class="aiSection">
+      <div class="aiBar">
+        <label class="aiLangLabel">
+          Language:
+          <select id="langSelect">
+            <option value="auto">Auto</option>
+            <option value="en">English</option>
+            <option value="jp">日本語</option>
+          </select>
+        </label>
+
+        <div id="aiStatusBadge" class="aiBadge">AI: --</div>
+      </div>
+
+      <div class="aiPanel">
+        <div id="aiTitle" class="aiTitle">AI Insight</div>
+        <ul id="aiInsights" class="aiInsights"></ul>
+      </div>
+    </section>
+
+    <!-- ===== Cards ===== -->
+    <section class="sensorCards">
+      <div class="cardsTopInfo">
+        Last Updated: <span id="lastUpdatedText">--</span>
+      </div>
+
+      <div class="sensorCard temp">
+        <div class="sensorHeader">
+          <div class="sensorTitle">Temperature</div>
+        </div>
+        <div id="tempNow" class="sensorNow">--</div>
+        <div class="sensorMeta">
+          <div>Today’s Max: <span id="tempMax">--</span></div>
+          <div>Today’s Min: <span id="tempMin">--</span></div>
+        </div>
+      </div>
+
+      <div class="sensorCard hum">
+        <div class="sensorHeader">
+          <div class="sensorTitle">Humidity</div>
+        </div>
+        <div id="humNow" class="sensorNow">--</div>
+        <div class="sensorMeta">
+          <div>Today’s Max: <span id="humMax">--</span></div>
+          <div>Today’s Min: <span id="humMin">--</span></div>
+        </div>
+      </div>
+
+      <div class="sensorCard press">
+        <div class="sensorHeader">
+          <div class="sensorTitle">Pressure</div>
+        </div>
+        <div id="pressNow" class="sensorNow">--</div>
+        <div class="sensorMeta">
+          <div>Today’s Max: <span id="pressMax">--</span></div>
+          <div>Today’s Min: <span id="pressMin">--</span></div>
+        </div>
+      </div>
+
+      <div class="sensorCard light">
+        <div class="sensorHeader">
+          <div class="sensorTitle">Light</div>
+        </div>
+        <div id="lightNow" class="sensorNow">--</div>
+        <div class="sensorMeta">
+          <div>Today’s Max: <span id="lightMax">--</span></div>
+          <div>Today’s Min: <span id="lightMin">--</span></div>
+        </div>
+      </div>
+    </section>
+<!-- ===== CSV Export ===== -->
+<section class="csvSection">
+  <div class="csvPanel">
+    <div class="csvHead">
+      <div class="csvTitle">CSV Export</div>
+      <div id="csvHintText" class="csvHint">Export timestamp (JST) + Temperature/Humidity/Pressure/Light.</div>
+    </div>
+
+    <div class="csvRow">
+      <button id="csvDownloadBtn" type="button" class="csvBtn">
+        Download CSV (Current View)
+      </button>
+
+      <button id="csvDownloadAllBtn" type="button" class="csvBtn csvBtn2">
+        Download CSV (Last N docs)
+      </button>
+
+      <div class="csvLimitWrap">
+        <label class="csvLabel">N:</label>
+        <input id="csvLimitInput" type="number" min="100" max="20000" step="100" value="6500" />
+      </div>
+    </div>
+  </div>
+</section>
+
+    <!-- ===== Live button ===== -->
+    <div class="liveControls">
+      <button id="goLiveBtn">Go Live</button>
+    </div>
+
+    <!-- ===== Charts + Calendar + Range ===== -->
+    <section class="chartGrid">
+      <div class="chartCard">
+        <div class="chartHeader">
+          <div id="tempChartTitle" class="chartTitle">Temperature (Today)</div>
+        </div>
+        <canvas id="tempChart"></canvas>
+      </div>
+
+      <div class="chartCard">
+        <div class="chartHeader">
+          <div id="humChartTitle" class="chartTitle">Humidity (Today)</div>
+        </div>
+        <canvas id="humChart"></canvas>
+      </div>
+
+      <div class="chartCard">
+        <div class="chartHeader">
+          <div id="pressChartTitle" class="chartTitle">Pressure (Today)</div>
+        </div>
+        <canvas id="pressChart"></canvas>
+      </div>
+
+      <div class="chartCard">
+        <div class="chartHeader">
+          <div id="lightChartTitle" class="chartTitle">Light (Today)</div>
+        </div>
+        <canvas id="lightChart"></canvas>
+      </div>
+
+      <!-- ===== Time Controls ===== -->
+      <div class="timeControls">
+        <div class="calendarBox">
+          <div class="calHeader">
+            <button id="calPrevBtn" class="calNavBtn">◀</button>
+            <div id="calTitle"></div>
+            <button id="calNextBtn" class="calNavBtn">▶</button>
+          </div>
+
+          <div class="calWeek">
+            <div>Sun</div><div>Mon</div><div>Tue</div>
+            <div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+          </div>
+
+          <div id="calendarGrid" class="calGrid"></div>
+        </div>
+
+        <div class="rangeBox">
+          <div class="rangeTitle">Custom Range</div>
+
+          <div class="rangeRow">
+            <label>Start</label>
+            <input id="rangeStart" type="datetime-local">
+          </div>
+
+          <div class="rangeRow">
+            <label>End</label>
+            <input id="rangeEnd" type="datetime-local">
+          </div>
+
+          <div id="rangeMsg" class="rangeMsg"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== Big toast popup (move to end for clarity) ===== -->
+  <div id="bigToast" class="bigToast hidden"></div>
+
+  <!-- Chart.js + Luxon adapter -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"></script>
+
+  <!-- ✅ Force Luxon default timezone BEFORE dashboard.js runs -->
+  <script>
+    if (window.luxon?.Settings) {
+      luxon.Settings.defaultZone = "Asia/Tokyo";
+    }
+  </script>
+
+  <script type="module" src="./dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,837 @@
+//index.html
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Env Dashboard</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brandTitle">Env Dashboard</div>
+      <div class="brandSub">Realtime environment monitoring</div>
+    </div>
+
+    <div class="controls">
+      <div class="control">
+        <div class="controlLabel">Device</div>
+        <select id="deviceSelect"></select>
+      </div>
+
+      <div class="control">
+        <div class="controlLabel">Status</div>
+        <div class="statusWrap">
+          <span id="deviceStatusDot" class="statusDot offline"></span>
+          <span id="deviceStatusText" class="statusText">Offline</span>
+        </div>
+      </div>
+
+      <div class="control right">
+        <div class="controlLabel">Now</div>
+        <div id="nowDateTime" class="nowTime">--</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- ✅ New: 4 cards like your sketch -->
+    <section class="sensorCards">
+      <div class="cardsTopInfo">
+  Last Updated: <span id="lastUpdatedText">--</span>
+</div>
+
+      <div class="sensorCard temp">
+        <div class="sensorHeader">
+          <div class="sensorTitle">Temperature</div>
+        </div>
+        <div id="tempNow" class="sensorNow">--</div>
+        <div class="sensorMeta">
+          <div>Today’s Max: <span id="tempMax">--</span></div>
+          <div>Today’s Min: <span id="tempMin">--</span></div>
+        </div>
+      </div>
+
+      <div class="sensorCard hum">
+        <div class="sensorHeader">
+          <div class="sensorTitle">Humidity</div>
+        </div>
+        <div id="humNow" class="sensorNow">--</div>
+        <div class="sensorMeta">
+          <div>Today’s Max: <span id="humMax">--</span></div>
+          <div>Today’s Min: <span id="humMin">--</span></div>
+        </div>
+      </div>
+
+      <div class="sensorCard press">
+        <div class="sensorHeader">
+          <div class="sensorTitle">Pressure</div>
+        </div>
+        <div id="pressNow" class="sensorNow">--</div>
+        <div class="sensorMeta">
+          <div>Today’s Max: <span id="pressMax">--</span></div>
+          <div>Today’s Min: <span id="pressMin">--</span></div>
+        </div>
+      </div>
+
+      <div class="sensorCard light">
+        <div class="sensorHeader">
+          <div class="sensorTitle">Light</div>
+        </div>
+        <div id="lightNow" class="sensorNow">--</div>
+        <div class="sensorMeta">
+          <div>Today’s Max: <span id="lightMax">--</span></div>
+          <div>Today’s Min: <span id="lightMin">--</span></div>
+        </div>
+      </div>
+    </section>
+<div class="liveControls">
+  <button id="goLiveBtn">Go Live</button>
+</div>
+
+    <section class="chartGrid">
+      <div class="chartCard">
+        <div class="chartHeader">
+          <div class="chartTitle">Temperature (Today)</div>
+        </div>
+        <canvas id="tempChart"></canvas>
+      </div>
+
+      <div class="chartCard">
+        <div class="chartHeader">
+          <div class="chartTitle">Humidity (Today)</div>
+        </div>
+        <canvas id="humChart"></canvas>
+      </div>
+
+      <div class="chartCard">
+        <div class="chartHeader">
+          <div class="chartTitle">Pressure (Today)</div>
+        </div>
+        <canvas id="pressChart"></canvas>
+      </div>
+
+      <div class="chartCard">
+        <div class="chartHeader">
+          <div class="chartTitle">Light (Today)</div>
+        </div>
+        <canvas id="lightChart"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <!-- Chart.js + Luxon adapter -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"></script>
+<script type="module" src="./dashboard.js"></script>
+
+</body>
+</html>
+
+//style.css
+* { box-sizing: border-box; }
+
+:root{
+  --bg: #0b1220;
+  --panel: rgba(255,255,255,0.06);
+  --panel2: rgba(255,255,255,0.08);
+  --border: rgba(255,255,255,0.10);
+  --text: #e5e7eb;
+  --muted: rgba(229,231,235,0.70);
+  --muted2: rgba(229,231,235,0.55);
+
+  --c-temp: #ff3b30;
+  --c-hum:  #00a3ff;
+  --c-press:#22c55e;
+  --c-light:#ffb020;
+}
+
+body{
+  margin:0;
+  background:
+    radial-gradient(1200px 600px at 10% 0%, rgba(56,189,248,0.18), transparent 55%),
+    radial-gradient(900px 500px at 90% 10%, rgba(168,85,247,0.16), transparent 60%),
+    var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+.topbar{
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.20);
+  backdrop-filter: blur(10px);
+}
+
+.brand{ display:flex; flex-direction:column; gap: 4px; }
+.brandTitle{ font-size: 22px; font-weight: 800; }
+.brandSub{ font-size: 12px; color: var(--muted2); }
+
+.controls{
+  margin-top: 12px;
+  display:flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.control{
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 12px;
+  min-width: 170px;
+}
+
+.control.right{
+  margin-left: auto;
+  text-align: right;
+  min-width: 230px;
+}
+
+.controlLabel{
+  font-size: 11px;
+  color: var(--muted2);
+  margin-bottom: 6px;
+}
+
+#deviceSelect{
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.28);
+  color: var(--text);
+  outline: none;
+}
+
+.nowTime{
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.statusWrap{ display:flex; align-items:center; gap: 8px; }
+.statusDot{
+  width: 10px; height: 10px;
+  border-radius: 999px;
+  display:inline-block;
+}
+.statusDot.online{ background:#22c55e; }
+.statusDot.offline{ background:#ef4444; }
+.statusText{ font-size: 13px; color: var(--muted); }
+
+.container{ padding: 16px 18px 26px; }
+
+/* ✅ Sketch cards */
+.sensorCards{
+  display:grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.sensorCard{
+  border-radius: 18px;
+  padding: 14px 14px 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+  position: relative;
+  overflow: hidden;
+}
+
+/* colored glow + border top */
+.sensorCard::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background: radial-gradient(600px 200px at 20% 0%, rgba(255,255,255,0.10), transparent 60%);
+  pointer-events:none;
+}
+
+.sensorCard.temp{ border-top: 4px solid var(--c-temp); }
+.sensorCard.hum{ border-top: 4px solid var(--c-hum); }
+.sensorCard.press{ border-top: 4px solid var(--c-press); }
+.sensorCard.light{ border-top: 4px solid var(--c-light); }
+
+.sensorHeader{
+  display:flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+.sensorTitle{
+  font-size: 13px;
+  font-weight: 900;
+  color: rgba(229,231,235,0.95);
+}
+
+.sensorNow{
+  font-size: 34px;
+  font-weight: 950;
+  letter-spacing: 0.2px;
+  margin: 6px 0 10px;
+}
+
+.sensorMeta{
+  font-size: 12px;
+  color: rgba(229,231,235,0.70);
+  display:flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sensorMeta span{
+  color: rgba(229,231,235,0.92);
+  font-weight: 800;
+}
+
+/* Charts */
+.chartGrid{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.chartCard{
+  background: linear-gradient(180deg, var(--panel2), var(--panel));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px 12px 10px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+}
+
+.chartHeader{
+  display:flex;
+  align-items:baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.chartTitle{ font-size: 13px; font-weight: 800; color: rgba(229,231,235,0.92); }
+
+canvas{ width: 100% !important; height: 290px !important; }
+
+@media (max-width: 1100px){
+  .sensorCards{ grid-template-columns: repeat(2, 1fr); }
+  .chartGrid{ grid-template-columns: 1fr; }
+  .control.right{ margin-left: 0; text-align:left; }
+}
+.cardsTopInfo{
+  grid-column: 1 / -1;
+  text-align: right;
+  font-size: 12px;
+  margin-bottom: 6px;
+  color: rgba(229,231,235,0.70);
+}
+
+.cardsTopInfo span{
+  color: rgba(229,231,235,0.95);
+  font-weight: 900;
+}
+.liveControls{
+  display:flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+#goLiveBtn{
+  background: #22c55e;
+  color: #052e16;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+#goLiveBtn:hover{
+  opacity: 0.9;
+}
+
+
+//dashboard.js
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  query,
+  orderBy,
+  limit,
+  onSnapshot,
+} from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+import { firebaseConfig } from "./firebase-config.js";
+
+// ===== Firebase =====
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+// ===== DEVICES =====
+const DEVICES = [{ id: "atom_s3_lite_01", name: "Atom S3 Lite 01" }];
+let currentDeviceId = DEVICES[0].id;
+
+// ===== DOM (top) =====
+const deviceSelect = document.getElementById("deviceSelect");
+const statusDot = document.getElementById("deviceStatusDot");
+const statusText = document.getElementById("deviceStatusText");
+const nowEl = document.getElementById("nowDateTime");
+const lastUpdatedText = document.getElementById("lastUpdatedText");
+const goLiveBtn = document.getElementById("goLiveBtn");
+
+// ===== DOM (cards) =====
+const tempNowEl  = document.getElementById("tempNow");
+const tempMaxEl  = document.getElementById("tempMax");
+const tempMinEl  = document.getElementById("tempMin");
+
+const humNowEl   = document.getElementById("humNow");
+const humMaxEl   = document.getElementById("humMax");
+const humMinEl   = document.getElementById("humMin");
+
+const pressNowEl = document.getElementById("pressNow");
+const pressMaxEl = document.getElementById("pressMax");
+const pressMinEl = document.getElementById("pressMin");
+
+const lightNowEl = document.getElementById("lightNow");
+const lightMaxEl = document.getElementById("lightMax");
+const lightMinEl = document.getElementById("lightMin");
+
+// ===== DOM (charts) =====
+const tempCanvas  = document.getElementById("tempChart");
+const humCanvas   = document.getElementById("humChart");
+const pressCanvas = document.getElementById("pressChart");
+const lightCanvas = document.getElementById("lightChart");
+
+// ===== State =====
+let tempChart=null, humChart=null, pressChart=null, lightChart=null;
+let unsubscribeData = null;
+
+let LIVE_MODE = true;              // live auto-scroll
+let lastDataMs = null;
+const ONLINE_THRESHOLD_MS = 180 * 1000; // 3 minutes
+
+// ✅ NEW: prevent programmatic resetZoom() from setting LIVE_MODE=false
+let IGNORE_ZOOM_EVENTS = false;
+
+// ===== Helpers =====
+function formatNum(val, digits){
+  return typeof val === "number" ? val.toFixed(digits) : "--";
+}
+
+function tsToMs(ts){
+  if (!ts) return null;
+  if (ts.toDate) return ts.toDate().getTime(); // Firestore Timestamp
+  if (typeof ts === "number") return ts < 1e12 ? ts * 1000 : ts;
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? null : d.getTime();
+}
+
+function startOfTodayMs(){
+  const d = new Date();
+  d.setHours(0,0,0,0);
+  return d.getTime();
+}
+function endOfTodayMs(){
+  return startOfTodayMs() + 24*60*60*1000;
+}
+
+function fmtTime(ms){
+  if (!ms) return "--";
+  return new Date(ms).toLocaleTimeString("ja-JP", { hour12:false, hour:"2-digit", minute:"2-digit" });
+}
+function fmtDateTime(ms){
+  if (!ms) return "--";
+  return new Date(ms).toLocaleString("ja-JP", {
+    year:"numeric", month:"2-digit", day:"2-digit",
+    hour:"2-digit", minute:"2-digit", second:"2-digit",
+    hour12:false
+  });
+}
+
+// ===== Go Live button text helper =====
+function renderGoLiveButton(){
+  if (!goLiveBtn) return;
+  goLiveBtn.textContent = LIVE_MODE ? "Go Live" : "Go Live (paused)";
+}
+
+// ===== Status =====
+function renderStatus(){
+  if (!statusDot || !statusText) return;
+
+  if (!lastDataMs){
+    statusDot.classList.remove("online");
+    statusDot.classList.add("offline");
+    statusText.textContent = "Offline (no data)";
+    return;
+  }
+
+  const ageMs = Date.now() - lastDataMs;
+
+  if (ageMs <= ONLINE_THRESHOLD_MS){
+    statusDot.classList.remove("offline");
+    statusDot.classList.add("online");
+    statusText.textContent = `Online (${Math.floor(ageMs/1000)}s ago)`;
+  } else {
+    statusDot.classList.remove("online");
+    statusDot.classList.add("offline");
+    statusText.textContent = `Offline (last seen ${fmtTime(lastDataMs)})`;
+  }
+}
+
+function startStatusTicker(){
+  setInterval(renderStatus, 1000);
+}
+
+// ===== Clock =====
+function startLiveClock(){
+  if (!nowEl) return;
+  const tick = () => nowEl.textContent = fmtDateTime(Date.now());
+  tick();
+  setInterval(tick, 1000);
+}
+
+// ===== Zoom plugin register =====
+function registerZoomPlugin(){
+  const zoomPlugin = window.ChartZoom?.default || window.ChartZoom;
+  if (!zoomPlugin){
+    console.warn("❌ chartjs-plugin-zoom not loaded. Zoom disabled.");
+    return false;
+  }
+  Chart.register(zoomPlugin);
+  console.log("✅ Zoom plugin registered");
+  return true;
+}
+
+// ===== Charts =====
+function makeTimeChart(canvas, label, color){
+  return new Chart(canvas, {
+    type: "line",
+    data: {
+      datasets: [{
+        label,
+        data: [],
+        borderColor: color,
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.25,
+      }]
+    },
+    options: {
+      responsive: true,
+      parsing: false,
+      animation: { duration: 200 },
+      scales: {
+        x: {
+          type: "time",
+          time: { unit: "hour", displayFormats: { hour: "HH:mm" } },
+          ticks: { maxTicksLimit: 10 }
+        },
+        y: { beginAtZero: false }
+      },
+      plugins: {
+        zoom: {
+          pan: {
+            enabled: true,
+            mode: "x",
+            onPanComplete(){
+              if (IGNORE_ZOOM_EVENTS) return; // ✅ ignore programmatic reset
+              LIVE_MODE = false;
+              renderGoLiveButton();
+            }
+          },
+          zoom: {
+            wheel: { enabled: true },
+            pinch: { enabled: true },
+            mode: "x",
+            onZoomComplete(){
+              if (IGNORE_ZOOM_EVENTS) return; // ✅ ignore programmatic reset
+              LIVE_MODE = false;
+              renderGoLiveButton();
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function initCharts(){
+  registerZoomPlugin();
+
+  tempChart  = makeTimeChart(tempCanvas,  "Temperature (°C)", "#ff3b30");
+  humChart   = makeTimeChart(humCanvas,   "Humidity (%)", "#00a3ff");
+  pressChart = makeTimeChart(pressCanvas, "Pressure (hPa)", "#22c55e");
+  lightChart = makeTimeChart(lightCanvas, "Light (lux)", "#ffb020");
+}
+
+// ===== LIVE window =====
+function applyLiveWindow(){
+  if (!LIVE_MODE) return;
+
+  const min = startOfTodayMs();
+  const max = Math.min(Date.now(), endOfTodayMs());
+
+  [tempChart, humChart, pressChart, lightChart].forEach(ch => {
+    ch.options.scales.x.min = min;
+    ch.options.scales.x.max = max;
+  });
+}
+
+function updateCharts({ tempPts, humPts, pressPts, lightPts }){
+  applyLiveWindow();
+
+  tempChart.data.datasets[0].data  = tempPts;
+  humChart.data.datasets[0].data   = humPts;
+  pressChart.data.datasets[0].data = pressPts;
+  lightChart.data.datasets[0].data = lightPts;
+
+  tempChart.update();
+  humChart.update();
+  pressChart.update();
+  lightChart.update();
+}
+
+// ===== Cards update =====
+function setAllCardTextToDash(){
+  if (tempNowEl)  tempNowEl.textContent  = "--";
+  if (tempMaxEl)  tempMaxEl.textContent  = "--";
+  if (tempMinEl)  tempMinEl.textContent  = "--";
+
+  if (humNowEl)   humNowEl.textContent   = "--";
+  if (humMaxEl)   humMaxEl.textContent   = "--";
+  if (humMinEl)   humMinEl.textContent   = "--";
+
+  if (pressNowEl) pressNowEl.textContent = "--";
+  if (pressMaxEl) pressMaxEl.textContent = "--";
+  if (pressMinEl) pressMinEl.textContent = "--";
+
+  if (lightNowEl) lightNowEl.textContent = "--";
+  if (lightMaxEl) lightMaxEl.textContent = "--";
+  if (lightMinEl) lightMinEl.textContent = "--";
+}
+
+function updateCards({ latest, tMax, tMin, hMax, hMin, pMax, pMin, lMax, lMin }){
+  if (!latest){
+    setAllCardTextToDash();
+    return;
+  }
+
+  if (tempNowEl)  tempNowEl.textContent  = `${formatNum(latest.Temperature,2)} °C`;
+  if (tempMaxEl)  tempMaxEl.textContent  = `${formatNum(tMax,2)} °C`;
+  if (tempMinEl)  tempMinEl.textContent  = `${formatNum(tMin,2)} °C`;
+
+  if (humNowEl)   humNowEl.textContent   = `${formatNum(latest.Humidity,2)} %`;
+  if (humMaxEl)   humMaxEl.textContent   = `${formatNum(hMax,2)} %`;
+  if (humMinEl)   humMinEl.textContent   = `${formatNum(hMin,2)} %`;
+
+  if (pressNowEl) pressNowEl.textContent = `${formatNum(latest.Pressure,1)} hPa`;
+  if (pressMaxEl) pressMaxEl.textContent = `${formatNum(pMax,1)} hPa`;
+  if (pressMinEl) pressMinEl.textContent = `${formatNum(pMin,1)} hPa`;
+
+  if (lightNowEl) lightNowEl.textContent = `${formatNum(latest.Light,1)} lux`;
+  if (lightMaxEl) lightMaxEl.textContent = `${formatNum(lMax,1)} lux`;
+  if (lightMinEl) lightMinEl.textContent = `${formatNum(lMin,1)} lux`;
+}
+
+// ===== Firestore subscribe =====
+function subscribeToTodayData(){
+  if (unsubscribeData) { unsubscribeData(); unsubscribeData = null; }
+
+  // IMPORTANT: this must match your Firestore structure
+  const dataCol = collection(db, "readings", currentDeviceId, "data");
+
+  const qData = query(dataCol, orderBy("timestamp", "desc"), limit(3000));
+
+  unsubscribeData = onSnapshot(
+    qData,
+    (snap) => {
+      console.log("Docs in snapshot:", snap.size);
+
+      if (snap.empty){
+        lastDataMs = null;
+        renderStatus();
+        if (lastUpdatedText) lastUpdatedText.textContent = "--";
+        setAllCardTextToDash();
+        updateCharts({ tempPts:[], humPts:[], pressPts:[], lightPts:[] });
+        return;
+      }
+
+      const todayStart = startOfTodayMs();
+      const todayEnd   = endOfTodayMs();
+
+      const rows = [];
+      snap.forEach(doc => rows.push(doc.data()));
+      rows.reverse(); // oldest -> newest
+
+      // Filter only today
+      const todayRows = rows.filter(d => {
+        const ms = tsToMs(d.timestamp);
+        return ms && ms >= todayStart && ms < todayEnd;
+      });
+
+      const finalRows = todayRows.length ? todayRows : rows;
+
+      // Build series + min/max
+      const tempPts=[], humPts=[], pressPts=[], lightPts=[];
+      let latest = null;
+
+      let tMax=null,tMin=null,hMax=null,hMin=null,pMax=null,pMin=null,lMax=null,lMin=null;
+
+      finalRows.forEach(d => {
+        const ms = tsToMs(d.timestamp);
+        if (!ms) return;
+        latest = d;
+
+        if (typeof d.Temperature === "number"){
+          tempPts.push({ x: ms, y: d.Temperature });
+          tMax = (tMax===null) ? d.Temperature : Math.max(tMax, d.Temperature);
+          tMin = (tMin===null) ? d.Temperature : Math.min(tMin, d.Temperature);
+        }
+        if (typeof d.Humidity === "number"){
+          humPts.push({ x: ms, y: d.Humidity });
+          hMax = (hMax===null) ? d.Humidity : Math.max(hMax, d.Humidity);
+          hMin = (hMin===null) ? d.Humidity : Math.min(hMin, d.Humidity);
+        }
+        if (typeof d.Pressure === "number"){
+          pressPts.push({ x: ms, y: d.Pressure });
+          pMax = (pMax===null) ? d.Pressure : Math.max(pMax, d.Pressure);
+          pMin = (pMin===null) ? d.Pressure : Math.min(pMin, d.Pressure);
+        }
+        if (typeof d.Light === "number"){
+          lightPts.push({ x: ms, y: d.Light });
+          lMax = (lMax===null) ? d.Light : Math.max(lMax, d.Light);
+          lMin = (lMin===null) ? d.Light : Math.min(lMin, d.Light);
+        }
+      });
+
+      // last updated + status
+      lastDataMs = tsToMs(latest?.timestamp);
+      renderStatus();
+      if (lastUpdatedText) lastUpdatedText.textContent = fmtDateTime(lastDataMs);
+
+      // update cards + charts
+      updateCards({ latest, tMax, tMin, hMax, hMin, pMax, pMin, lMax, lMin });
+      updateCharts({ tempPts, humPts, pressPts, lightPts });
+    },
+    (err) => {
+      console.error("❌ Firestore onSnapshot error:", err);
+      lastDataMs = null;
+      renderStatus();
+      if (lastUpdatedText) lastUpdatedText.textContent = "--";
+      setAllCardTextToDash();
+    }
+  );
+}
+
+// ===== Dropdown =====
+function setupDeviceDropdown(){
+  if (!deviceSelect) return;
+
+  deviceSelect.innerHTML = "";
+  DEVICES.forEach((dev, idx) => {
+    const opt = document.createElement("option");
+    opt.value = dev.id;
+    opt.textContent = dev.name;
+    deviceSelect.appendChild(opt);
+    if (idx === 0) currentDeviceId = dev.id;
+  });
+  deviceSelect.value = currentDeviceId;
+
+  deviceSelect.addEventListener("change", () => {
+    currentDeviceId = deviceSelect.value;
+    LIVE_MODE = true; // go live when switching device
+    renderGoLiveButton();
+    subscribeToTodayData();
+  });
+}
+
+// ===== Go Live button =====
+function setupGoLiveButton(){
+  if (!goLiveBtn) return;
+
+  goLiveBtn.addEventListener("click", () => {
+    // go live + reset zoom, but do NOT let resetZoom trigger "paused"
+    LIVE_MODE = true;
+    renderGoLiveButton();
+
+    IGNORE_ZOOM_EVENTS = true;
+    [tempChart, humChart, pressChart, lightChart].forEach(ch => ch?.resetZoom?.());
+
+    // release the ignore flag after zoom plugin finishes its internal events
+    setTimeout(() => {
+      IGNORE_ZOOM_EVENTS = false;
+      LIVE_MODE = true;
+      renderGoLiveButton();
+    }, 0);
+  });
+
+  // keep your old behavior: show paused status on the button text
+  setInterval(() => {
+    renderGoLiveButton();
+  }, 500);
+}
+
+// ===== Day rollover =====
+let currentDayKey = null;
+function dayKeyNow(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function startDayWatcher(){
+  currentDayKey = dayKeyNow();
+  setInterval(() => {
+    const k = dayKeyNow();
+    if (k !== currentDayKey){
+      currentDayKey = k;
+      LIVE_MODE = true;
+      renderGoLiveButton();
+      subscribeToTodayData();
+    }
+  }, 10000);
+}
+
+// ===== Init =====
+(function main(){
+  console.log("✅ dashboard.js loaded");
+
+  setupDeviceDropdown();
+  startLiveClock();
+  startStatusTicker();
+
+  // default placeholders
+  if (lastUpdatedText) lastUpdatedText.textContent = "--";
+  setAllCardTextToDash();
+
+  initCharts();
+  setupGoLiveButton();
+
+  // initial button state
+  renderGoLiveButton();
+
+  subscribeToTodayData();
+  startDayWatcher();
+})();
+
+
+//firebase-confing.js
+// firebase-config.js
+export const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "env-monitoring-project.firebaseapp.com",
+  projectId: "env-monitoring-project",
+  storageBucket: "env-monitoring-project.appspot.com",
+  messagingSenderId: "123456789012",
+  appId: "1:123456789012:web:abcdef12345678",
+  measurementId: "G-XXXXXXX"
+};
+
+
+
+
+

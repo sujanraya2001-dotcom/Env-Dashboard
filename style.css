@@ -1,0 +1,606 @@
+* { box-sizing: border-box; }
+
+:root{
+  --bg: #0b1220;
+  --panel: rgba(255,255,255,0.06);
+  --panel2: rgba(255,255,255,0.08);
+  --border: rgba(255,255,255,0.10);
+  --text: #e5e7eb;
+  --muted: rgba(229,231,235,0.70);
+  --muted2: rgba(229,231,235,0.55);
+
+  --c-temp: #ff3b30;
+  --c-hum:  #00a3ff;
+  --c-press:#22c55e;
+  --c-light:#ffb020;
+}
+
+body{
+  margin:0;
+  background:
+    radial-gradient(1200px 600px at 10% 0%, rgba(56,189,248,0.18), transparent 55%),
+    radial-gradient(900px 500px at 90% 10%, rgba(168,85,247,0.16), transparent 60%),
+    var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+.topbar{
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.20);
+  backdrop-filter: blur(10px);
+}
+
+.brand{ display:flex; flex-direction:column; gap: 4px; }
+.brandTitle{ font-size: 22px; font-weight: 800; }
+.brandSub{ font-size: 12px; color: var(--muted2); }
+
+.controls{
+  margin-top: 12px;
+  display:flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.control{
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 12px;
+  min-width: 170px;
+}
+
+.control.right{
+  margin-left: auto;
+  text-align: right;
+  min-width: 230px;
+}
+
+.controlLabel{
+  font-size: 11px;
+  color: var(--muted2);
+  margin-bottom: 6px;
+}
+
+#deviceSelect{
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.28);
+  color: var(--text);
+  outline: none;
+}
+
+.nowTime{
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.statusWrap{ display:flex; align-items:center; gap: 8px; }
+.statusDot{
+  width: 10px; height: 10px;
+  border-radius: 999px;
+  display:inline-block;
+}
+.statusDot.online{ background:#22c55e; }
+.statusDot.offline{ background:#ef4444; }
+.statusText{ font-size: 13px; color: var(--muted); }
+
+.container{ padding: 16px 18px 26px; }
+
+/* ✅ Sketch cards */
+.sensorCards{
+  display:grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.sensorCard{
+  border-radius: 18px;
+  padding: 14px 14px 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+  position: relative;
+  overflow: hidden;
+}
+
+/* colored glow + border top */
+.sensorCard::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background: radial-gradient(600px 200px at 20% 0%, rgba(255,255,255,0.10), transparent 60%);
+  pointer-events:none;
+}
+
+.sensorCard.temp{ border-top: 4px solid var(--c-temp); }
+.sensorCard.hum{ border-top: 4px solid var(--c-hum); }
+.sensorCard.press{ border-top: 4px solid var(--c-press); }
+.sensorCard.light{ border-top: 4px solid var(--c-light); }
+
+.sensorHeader{
+  display:flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+.sensorTitle{
+  font-size: 13px;
+  font-weight: 900;
+  color: rgba(229,231,235,0.95);
+}
+
+.sensorNow{
+  font-size: 34px;
+  font-weight: 950;
+  letter-spacing: 0.2px;
+  margin: 6px 0 10px;
+}
+
+.sensorMeta{
+  font-size: 12px;
+  color: rgba(229,231,235,0.70);
+  display:flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sensorMeta span{
+  color: rgba(229,231,235,0.92);
+  font-weight: 800;
+}
+
+/* Charts */
+.chartGrid{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.chartCard{
+  background: linear-gradient(180deg, var(--panel2), var(--panel));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px 12px 10px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+}
+
+.chartHeader{
+  display:flex;
+  align-items:baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.chartTitle{ font-size: 13px; font-weight: 800; color: rgba(229,231,235,0.92); }
+
+canvas{ width: 100% !important; height: 290px !important; }
+
+@media (max-width: 1100px){
+  .sensorCards{ grid-template-columns: repeat(2, 1fr); }
+  .chartGrid{ grid-template-columns: 1fr; }
+  .control.right{ margin-left: 0; text-align:left; }
+}
+
+.cardsTopInfo{
+  grid-column: 1 / -1;
+  text-align: right;
+  font-size: 12px;
+  margin-bottom: 6px;
+  color: rgba(229,231,235,0.70);
+}
+
+.cardsTopInfo span{
+  color: rgba(229,231,235,0.95);
+  font-weight: 900;
+}
+
+.liveControls{
+  display:flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+#goLiveBtn{
+  background: #22c55e;
+  color: #052e16;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+#goLiveBtn:hover{
+  opacity: 0.9;
+}
+
+/* ================================
+   Time Controls (Calendar + Range)
+==================================*/
+.timeControls{
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 14px;
+  margin: 14px 0;
+}
+
+@media (max-width: 980px){
+  .timeControls{ grid-template-columns: 1fr; }
+}
+
+.calendarBox, .rangeBox{
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+  backdrop-filter: blur(8px);
+}
+
+/* ----- Calendar header ----- */
+.calHeader{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+#calTitle{
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  opacity: 0.95;
+}
+
+.calNavBtn{
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.90);
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease, border 0.15s ease;
+}
+
+.calNavBtn:hover{
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.16);
+}
+
+.calNavBtn:active{
+  transform: scale(0.98);
+}
+
+.calNavBtn:disabled{
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ----- Week row ----- */
+.calWeek{
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  opacity: 0.70;
+  user-select: none;
+}
+
+.calWeek > div{
+  text-align: center;
+  padding: 6px 0;
+}
+
+/* ----- Calendar grid ----- */
+.calGrid{
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.calCell{
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.92);
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.15s ease, border 0.15s ease, transform 0.08s ease;
+}
+
+.calCell:hover{
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.14);
+}
+
+.calCell:active{
+  transform: scale(0.99);
+}
+
+.calPad{
+  background: transparent;
+  border: 0;
+  cursor: default;
+}
+
+.calDisabled{
+  opacity: 0.30;
+  cursor: not-allowed;
+  background: rgba(255,255,255,0.02);
+}
+
+.calToday{
+  border-color: rgba(34,197,94,0.55);     /* green outline */
+  box-shadow: 0 0 0 2px rgba(34,197,94,0.12) inset;
+}
+
+.calSelected{
+  background: rgba(0,163,255,0.22);       /* your blue accent */
+  border-color: rgba(0,163,255,0.55);
+  box-shadow: 0 0 0 2px rgba(0,163,255,0.12) inset;
+}
+
+/* ----- Range box ----- */
+.rangeBox{
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.rangeRow{
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.rangeRow label{
+  font-size: 12px;
+  opacity: 0.75;
+  user-select: none;
+}
+
+.rangeRow input[type="datetime-local"]{
+  width: 100%;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.25);
+  color: rgba(255,255,255,0.92);
+  padding: 0 10px;
+  outline: none;
+}
+
+.rangeRow input[type="datetime-local"]:focus{
+  border-color: rgba(0,163,255,0.55);
+  box-shadow: 0 0 0 3px rgba(0,163,255,0.12);
+}
+
+.rangeMsg{
+  min-height: 18px;
+  font-size: 12px;
+  opacity: 0.9;
+  color: rgba(255,140,140,0.95);
+}
+
+/* Optional: a subtle title for range section */
+.rangeTitle{
+  font-weight: 700;
+  opacity: 0.9;
+  margin-bottom: 2px;
+}
+
+/* =========================
+   AI UI (dark theme match)
+========================= */
+.aiSection{
+  margin: 10px 0 14px;
+}
+
+.aiBar{
+  display:flex;
+  gap:12px;
+  align-items:center;
+  margin: 0 0 10px;
+}
+
+.aiLangLabel{
+  font-size: 12px;
+  color: var(--muted);
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+
+#langSelect{
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.28);
+  color: var(--text);
+  outline: none;
+}
+
+.aiBadge{
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-weight: 900;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.06);
+  color: rgba(229,231,235,0.95);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+}
+
+/* Badge states (still dark, just tinted) */
+.aiBadge.ok{
+  background: rgba(34,197,94,0.12);
+  border-color: rgba(34,197,94,0.35);
+}
+.aiBadge.warn{
+  background: rgba(245,158,11,0.14);
+  border-color: rgba(245,158,11,0.40);
+}
+.aiBadge.alert{
+  background: rgba(239,68,68,0.14);
+  border-color: rgba(239,68,68,0.40);
+}
+
+.aiPanel{
+  background: linear-gradient(180deg, var(--panel2), var(--panel));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px 12px 10px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+}
+
+.aiTitle{
+  font-weight: 900;
+  margin-bottom: 8px;
+  color: rgba(229,231,235,0.92);
+  font-size: 13px;
+}
+
+.aiInsights{
+  margin:0;
+  padding-left: 18px;
+  color: rgba(229,231,235,0.82);
+}
+
+.aiInsights li{
+  margin: 6px 0;
+  font-size: 12.5px;
+}
+
+/* =========================
+   Big Toast (dark theme)
+========================= */
+.bigToast{
+  position:fixed;
+  left:50%;
+  top:18px;
+  transform:translateX(-50%);
+  z-index:9999;
+  max-width:92vw;
+  width:680px;
+
+  padding:16px 18px;
+  border-radius:14px;
+  font-weight:900;
+  box-shadow: 0 12px 35px rgba(0,0,0,0.40);
+
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.06);
+  color: rgba(229,231,235,0.95);
+
+  backdrop-filter: blur(10px);
+  font-size:16px;
+  line-height:1.35;
+}
+
+.bigToast.hidden{ display:none; }
+
+.bigToast.ok{
+  border-color: rgba(34,197,94,0.35);
+  background: rgba(34,197,94,0.16);
+}
+.bigToast.warn{
+  border-color: rgba(245,158,11,0.40);
+  background: rgba(245,158,11,0.18);
+}
+.bigToast.alert{
+  border-color: rgba(239,68,68,0.45);
+  background: rgba(239,68,68,0.20);
+}
+/* =========================
+   CSV Export (dark theme match)
+========================= */
+.csvSection{
+  margin: 0 0 12px;
+}
+
+.csvPanel{
+  background: linear-gradient(180deg, var(--panel2), var(--panel));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+}
+
+.csvHead{
+  display:flex;
+  align-items:baseline;
+  justify-content: space-between;
+  gap:12px;
+  margin-bottom: 10px;
+}
+
+.csvTitle{
+  font-weight: 900;
+  color: rgba(229,231,235,0.92);
+  font-size: 13px;
+}
+
+.csvHint{
+  font-size: 12px;
+  color: rgba(229,231,235,0.70);
+}
+
+.csvRow{
+  display:flex;
+  gap:10px;
+  flex-wrap: wrap;
+  align-items:center;
+}
+
+.csvBtn{
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: rgba(229,231,235,0.95);
+  font-weight: 900;
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.csvBtn:hover{ background: rgba(255,255,255,0.10); }
+
+.csvBtn2{
+  border-color: rgba(0,163,255,0.35);
+}
+
+.csvLimitWrap{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-left: auto;
+}
+
+.csvLabel{
+  font-size: 12px;
+  color: rgba(229,231,235,0.70);
+}
+
+#csvLimitInput{
+  width: 120px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.25);
+  color: rgba(255,255,255,0.92);
+  padding: 0 10px;
+  outline: none;
+}
+
+#csvLimitInput:focus{
+  border-color: rgba(0,163,255,0.55);
+  box-shadow: 0 0 0 3px rgba(0,163,255,0.12);
+}
