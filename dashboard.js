@@ -3,6 +3,13 @@
 // 1) CSV Export (current device view, current device last N, all devices view, all devices last N)
 // 2) Global offline popup after 5 minutes (modal via AI.evaluateGlobal)
 // ✅ FIXED: will NOT crash if extra CSV buttons are not present in HTML
+//
+// ✅ BUG FIXES INCLUDED (your issues):
+// A) Day view / Range view no longer shows only ~12h (no more "limit then filter" problem)
+//    -> uses Firestore window query (where timestamp >= from && < to) for day/range
+// B) JST consistency across calendar/day/range/rollover/display
+//    -> Luxon "Asia/Tokyo" used for day math + range parsing + display timeZone
+// C) Optional safety: prevents huge range selection that can freeze browser (48h cap)
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import {
@@ -11,6 +18,7 @@ import {
   persistentMultipleTabManager,
   collection,
   query,
+  where,
   orderBy,
   limit,
   onSnapshot,
@@ -41,7 +49,7 @@ const AI = createAI();
 ======================= */
 const DEVICES = [
   { id: "atom_s3_lite_01", name: "Atom S3 Lite 01" },
-  { id: "atom_s3_lite_02", name: "Atom S3 Lite 02" },
+  { id: "atom_s3_lite_02", name: "学習支援室" },
   { id: "atom_s3_lite_03", name: "Atom S3 Lite 03" },
   { id: "atom_s3_lite_04", name: "Atom S3 Lite 04" },
 ];
@@ -166,6 +174,12 @@ const RANGE_INPUT_DEBOUNCE_MS = 200;
 const FIRESTORE_LIMIT_DOCS = 6500;
 const GLOBAL_LIMIT_DOCS = 900;
 
+// For day/range window queries (avoid missing half-day)
+const WINDOW_LIMIT_DOCS = 50000;
+
+// Safety: prevent huge range selection that can freeze UI
+const MAX_RANGE_MS = 48 * 60 * 60 * 1000; // 48 hours
+
 let CURRENT_VIEW_ROWS = [];
 
 /* =======================
@@ -186,29 +200,33 @@ function formatNum(val, digits) {
 
 function tsToMs(ts) {
   if (!ts) return null;
-  if (ts.toDate) return ts.toDate().getTime();
+  if (ts.toDate) return ts.toDate().getTime(); // Firestore Timestamp
   if (typeof ts === "number") return ts < 1e12 ? ts * 1000 : ts;
   const d = new Date(ts);
   return isNaN(d.getTime()) ? null : d.getTime();
 }
 
-/* ===== JST-safe "today" using Luxon ===== */
+/* ===== JST-safe day math (Luxon) ===== */
 function startOfTodayMs() {
   return luxon.DateTime.now().setZone("Asia/Tokyo").startOf("day").toMillis();
 }
 function endOfTodayMs() {
   return luxon.DateTime.now().setZone("Asia/Tokyo").endOf("day").toMillis() + 1;
 }
-
 function startOfDayMs(y, m, day) {
-  const d = new Date(y, m, day);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  return luxon.DateTime.fromObject(
+    { year: y, month: m + 1, day },
+    { zone: "Asia/Tokyo" }
+  )
+    .startOf("day")
+    .toMillis();
 }
 
+/* ===== Display helpers (force JST) ===== */
 function fmtTime(ms) {
   if (!ms) return "--";
   return new Date(ms).toLocaleTimeString("ja-JP", {
+    timeZone: "Asia/Tokyo",
     hour12: false,
     hour: "2-digit",
     minute: "2-digit",
@@ -218,6 +236,7 @@ function fmtTime(ms) {
 function fmtDateTime(ms) {
   if (!ms) return "--";
   return new Date(ms).toLocaleString("ja-JP", {
+    timeZone: "Asia/Tokyo",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -228,20 +247,21 @@ function fmtDateTime(ms) {
   });
 }
 
-function toLocalDateTimeInputValue(dateObj) {
-  const y = dateObj.getFullYear();
-  const mo = String(dateObj.getMonth() + 1).padStart(2, "0");
-  const d = String(dateObj.getDate()).padStart(2, "0");
-  const hh = String(dateObj.getHours()).padStart(2, "0");
-  const mm = String(dateObj.getMinutes()).padStart(2, "0");
-  return `${y}-${mo}-${d}T${hh}:${mm}`;
+/* ===== datetime-local handling (treat input as JST) ===== */
+function toJstDateTimeLocalValueFromMs(ms) {
+  const dt = luxon.DateTime.fromMillis(ms, { zone: "Asia/Tokyo" });
+  return dt.toFormat("yyyy-LL-dd'T'HH:mm");
 }
-
+function toLocalDateTimeInputValue(dateObj) {
+  // keep function name for compatibility, but actually generate JST value
+  const ms = dateObj instanceof Date ? dateObj.getTime() : Date.now();
+  return toJstDateTimeLocalValueFromMs(ms);
+}
 function parseDateTimeLocalToMs(val) {
+  // val like "2026-01-19T13:45" -> interpret as JST (not PC timezone)
   if (!val) return null;
-  const dt = new Date(val);
-  const ms = dt.getTime();
-  return isNaN(ms) ? null : ms;
+  const dt = luxon.DateTime.fromFormat(val, "yyyy-LL-dd'T'HH:mm", { zone: "Asia/Tokyo" });
+  return dt.isValid ? dt.toMillis() : null;
 }
 
 function setMsg(text) {
@@ -251,24 +271,21 @@ function setMsg(text) {
 
 /* ===== Chart title helpers ===== */
 function fmtYMD(ms) {
-  const d = new Date(ms);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const da = String(d.getDate()).padStart(2, "0");
-  return `${y}/${m}/${da}`;
+  const dt = luxon.DateTime.fromMillis(ms, { zone: "Asia/Tokyo" });
+  return dt.toFormat("yyyy/LL/dd");
 }
 function fmtWeekday(ms) {
-  return new Date(ms).toLocaleDateString("en-US", { weekday: "short" });
+  return luxon.DateTime.fromMillis(ms, { zone: "Asia/Tokyo" }).toFormat("ccc"); // Mon, Tue...
 }
 function fmtYMDHM(ms) {
-  const d = new Date(ms);
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${fmtYMD(ms)} ${hh}:${mm}`;
+  const dt = luxon.DateTime.fromMillis(ms, { zone: "Asia/Tokyo" });
+  return `${dt.toFormat("yyyy/LL/dd")} ${dt.toFormat("HH:mm")}`;
 }
 
 function updateChartTitles() {
-  const set = (el, text) => { if (el) el.textContent = text; };
+  const set = (el, text) => {
+    if (el) el.textContent = text;
+  };
 
   if (VIEW_MODE === "day" && selectedDayStartMs) {
     const dayStr = `${fmtYMD(selectedDayStartMs)} ${fmtWeekday(selectedDayStartMs)}`;
@@ -279,7 +296,11 @@ function updateChartTitles() {
     return;
   }
 
-  if (VIEW_MODE === "range" && typeof rangeStartMs === "number" && typeof rangeEndMs === "number") {
+  if (
+    VIEW_MODE === "range" &&
+    typeof rangeStartMs === "number" &&
+    typeof rangeEndMs === "number"
+  ) {
     const endClamped = Math.min(rangeEndMs, Date.now());
     const rangeStr = `${fmtYMDHM(rangeStartMs)} – ${fmtYMDHM(endClamped)}`;
     set(tempChartTitleEl, `Temperature (${rangeStr})`);
@@ -314,10 +335,16 @@ function setAiBadge(level, lang) {
   const L = lang === "jp" ? "jp" : "en";
   const label =
     level === "ALERT"
-      ? (L === "jp" ? "AI: 警告" : "AI: ALERT")
+      ? L === "jp"
+        ? "AI: 警告"
+        : "AI: ALERT"
       : level === "WARN"
-      ? (L === "jp" ? "AI: 注意" : "AI: WARNING")
-      : (L === "jp" ? "AI: 正常" : "AI: OK");
+      ? L === "jp"
+        ? "AI: 注意"
+        : "AI: WARNING"
+      : L === "jp"
+      ? "AI: 正常"
+      : "AI: OK";
 
   if (level === "ALERT") aiStatusBadge.classList.add("alert");
   else if (level === "WARN") aiStatusBadge.classList.add("warn");
@@ -374,7 +401,8 @@ function ensureGlobalModal() {
 
   const msg = document.createElement("div");
   msg.id = "aiGlobalModalMsg";
-  msg.style.cssText = "font-size:14px;line-height:1.5;opacity:.95;margin-bottom:14px;";
+  msg.style.cssText =
+    "font-size:14px;line-height:1.5;opacity:.95;margin-bottom:14px;";
 
   const btnRow = document.createElement("div");
   btnRow.style.cssText = "display:flex;justify-content:flex-end;gap:10px;";
@@ -407,8 +435,12 @@ function showGlobalModal(level, text, eventKey, lang) {
   const isJP = lang === "jp";
   const t =
     level === "critical"
-      ? (isJP ? "AI: 重要アラート" : "AI: Critical Alert")
-      : (isJP ? "AI: Notice" : "AI: Notice");
+      ? isJP
+        ? "AI: 重要アラート"
+        : "AI: Critical Alert"
+      : isJP
+      ? "AI: Notice"
+      : "AI: Notice";
 
   M.title.textContent = t;
   M.msg.textContent = text || "--";
@@ -508,7 +540,11 @@ function runGlobalAI({ ackEventKey = null } = {}) {
     const eventKey = t.eventKey || null;
 
     const minGap = 6000;
-    if (eventKey && LAST_GLOBAL_TOAST_EVENT === eventKey && now - LAST_GLOBAL_TOAST_MS < minGap) {
+    if (
+      eventKey &&
+      LAST_GLOBAL_TOAST_EVENT === eventKey &&
+      now - LAST_GLOBAL_TOAST_MS < minGap
+    ) {
       return;
     }
 
@@ -737,6 +773,7 @@ function updateCards({ latest, tMax, tMin, hMax, hMin, pMax, pMin, lMax, lMin })
 
 /* =======================
    Firestore subscribe (selected device)
+   ✅ FIX: day/range uses window query (no more partial day)
 ======================= */
 function subscribeToTodayData() {
   if (unsubscribeData) {
@@ -745,7 +782,28 @@ function subscribeToTodayData() {
   }
 
   const dataCol = collection(db, "public_readings", currentDeviceId, "data");
-  const qData = query(dataCol, orderBy("timestamp", "desc"), limit(FIRESTORE_LIMIT_DOCS));
+
+  const win = getActiveWindow();
+  const fromDate = new Date(win.from);
+  const toDate = new Date(win.to);
+
+  let qData = null;
+
+  if (VIEW_MODE === "day" || VIEW_MODE === "range") {
+    qData = query(
+      dataCol,
+      orderBy("timestamp", "asc"),
+      where("timestamp", ">=", fromDate),
+      where("timestamp", "<", toDate),
+      limit(WINDOW_LIMIT_DOCS)
+    );
+  } else {
+    qData = query(
+      dataCol,
+      orderBy("timestamp", "desc"),
+      limit(FIRESTORE_LIMIT_DOCS)
+    );
+  }
 
   unsubscribeData = onSnapshot(
     qData,
@@ -765,16 +823,22 @@ function subscribeToTodayData() {
 
       const rows = [];
       snap.forEach((doc) => rows.push(doc.data()));
-      rows.reverse();
 
-      const win = getActiveWindow();
-      const filtered = rows.filter((d) => {
-        const ms = tsToMs(d.timestamp);
-        return ms && ms >= win.from && ms < win.to;
-      });
+      // live mode query is desc -> reverse to asc for plotting
+      if (VIEW_MODE === "live") rows.reverse();
 
-      let finalRows = filtered;
-      if (VIEW_MODE === "live" && filtered.length === 0) finalRows = rows;
+      // day/range query already in-window, no need to filter
+      let finalRows = rows;
+
+      // live mode still filters to active window (today)
+      if (VIEW_MODE === "live") {
+        const win2 = getActiveWindow();
+        const filtered = rows.filter((d) => {
+          const ms = tsToMs(d.timestamp);
+          return ms && ms >= win2.from && ms < win2.to;
+        });
+        finalRows = filtered.length ? filtered : rows;
+      }
 
       CURRENT_VIEW_ROWS = finalRows;
 
@@ -818,6 +882,11 @@ function subscribeToTodayData() {
 
       updateCards({ latest, tMax, tMin, hMax, hMin, pMax, pMin, lMax, lMin });
       updateCharts({ tempPts, humPts, pressPts, lightPts });
+
+      // keep chart window locked in day/range
+      if (VIEW_MODE === "day" || VIEW_MODE === "range") {
+        forceWindowToActiveRange();
+      }
 
       updateAIUI();
     },
@@ -916,8 +985,9 @@ function setupDeviceDropdown() {
     updateChartTitles();
 
     syncRangeMaxNow();
-    calYear = new Date().getFullYear();
-    calMonth = new Date().getMonth();
+    const nowJ = luxon.DateTime.now().setZone("Asia/Tokyo");
+    calYear = nowJ.year;
+    calMonth = nowJ.month - 1;
     renderCalendar();
 
     subscribeToTodayData();
@@ -954,10 +1024,12 @@ function setupGoLiveButton() {
       renderGoLiveButton();
     }, 0);
 
-    calYear = new Date().getFullYear();
-    calMonth = new Date().getMonth();
+    const nowJ = luxon.DateTime.now().setZone("Asia/Tokyo");
+    calYear = nowJ.year;
+    calMonth = nowJ.month - 1;
     renderCalendar();
 
+    subscribeToTodayData();
     updateAIUI();
   });
 
@@ -965,12 +1037,11 @@ function setupGoLiveButton() {
 }
 
 /* =======================
-   Day rollover
+   Day rollover (JST)
 ======================= */
 let currentDayKey = null;
 function dayKeyNow() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return luxon.DateTime.now().setZone("Asia/Tokyo").toFormat("yyyy-LL-dd");
 }
 
 function startDayWatcher() {
@@ -1000,11 +1071,12 @@ function startDayWatcher() {
 }
 
 /* =======================
-   Calendar
+   Calendar (JST)
 ======================= */
 function monthName(y, m) {
-  const d = new Date(y, m, 1);
-  return d.toLocaleString("en-US", { month: "long", year: "numeric" });
+  // Use English month/year but treat as JST month context
+  const dt = luxon.DateTime.fromObject({ year: y, month: m + 1, day: 1 }, { zone: "Asia/Tokyo" });
+  return dt.setLocale("en").toFormat("LLLL yyyy");
 }
 function isFutureDay(y, m, day) {
   const start = startOfDayMs(y, m, day);
@@ -1015,23 +1087,23 @@ function isSelectedDay(y, m, day) {
   return selectedDayStartMs === startOfDayMs(y, m, day);
 }
 function isTodayCell(y, m, day) {
-  const t = new Date();
-  return y === t.getFullYear() && m === t.getMonth() && day === t.getDate();
+  const t = luxon.DateTime.now().setZone("Asia/Tokyo");
+  return y === t.year && m === (t.month - 1) && day === t.day;
 }
 
 function renderCalendar() {
   if (!calGridEl || !calTitleEl) return;
 
-  const now = new Date();
-  const isCurrentMonth = calYear === now.getFullYear() && calMonth === now.getMonth();
+  const now = luxon.DateTime.now().setZone("Asia/Tokyo");
+  const isCurrentMonth = calYear === now.year && calMonth === (now.month - 1);
   if (calNextBtn) calNextBtn.disabled = isCurrentMonth;
 
   calTitleEl.textContent = monthName(calYear, calMonth);
   calGridEl.innerHTML = "";
 
-  const first = new Date(calYear, calMonth, 1);
-  const startWeekday = first.getDay();
-  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const first = luxon.DateTime.fromObject({ year: calYear, month: calMonth + 1, day: 1 }, { zone: "Asia/Tokyo" });
+  const startWeekday = first.weekday % 7; // Luxon: Monday=1...Sunday=7
+  const daysInMonth = first.daysInMonth;
 
   for (let i = 0; i < startWeekday; i++) {
     const pad = document.createElement("div");
@@ -1073,6 +1145,8 @@ function renderCalendar() {
       forceWindowToActiveRange();
       renderCalendar();
 
+      // ✅ IMPORTANT: fetch that full day window
+      subscribeToTodayData();
       updateAIUI();
     });
 
@@ -1094,9 +1168,9 @@ function setupCalendarNav() {
 
   if (calNextBtn) {
     calNextBtn.addEventListener("click", () => {
-      const now = new Date();
-      const curY = now.getFullYear();
-      const curM = now.getMonth();
+      const now = luxon.DateTime.now().setZone("Asia/Tokyo");
+      const curY = now.year;
+      const curM = now.month - 1;
 
       let nextY = calYear;
       let nextM = calMonth + 1;
@@ -1118,7 +1192,8 @@ function setupCalendarNav() {
    Range
 ======================= */
 function syncRangeMaxNow() {
-  const maxStr = toLocalDateTimeInputValue(new Date());
+  const nowJ = luxon.DateTime.now().setZone("Asia/Tokyo").toMillis();
+  const maxStr = toJstDateTimeLocalValueFromMs(nowJ);
   if (rangeStartEl) rangeStartEl.max = maxStr;
   if (rangeEndEl) rangeEndEl.max = maxStr;
 }
@@ -1137,6 +1212,11 @@ function validateAndApplyRangeFromInputs() {
   if (s > nowMs || e > nowMs) { setMsg("Future time is not allowed. Please select up to the current time."); return; }
   if (s >= e) { setMsg("Start must be earlier than End."); return; }
 
+  if (e - s > MAX_RANGE_MS) {
+    setMsg("Range too large. Please select 48 hours or less.");
+    return;
+  }
+
   setMsg("");
 
   VIEW_MODE = "range";
@@ -1151,6 +1231,8 @@ function validateAndApplyRangeFromInputs() {
   forceWindowToActiveRange();
   renderCalendar();
 
+  // ✅ IMPORTANT: fetch that full range window
+  subscribeToTodayData();
   updateAIUI();
 }
 
@@ -1272,7 +1354,8 @@ async function downloadAllDevicesCurrentViewCsv() {
   if (csvHintText) csvHintText.textContent = "Preparing CSV for all devices (current view)...";
 
   const win = getActiveWindow();
-  const limitN = FIRESTORE_LIMIT_DOCS;
+  const fromDate = new Date(win.from);
+  const toDate = new Date(win.to);
 
   let totalFiles = 0;
   let totalRows = 0;
@@ -1280,27 +1363,54 @@ async function downloadAllDevicesCurrentViewCsv() {
   for (const dev of DEVICES) {
     try {
       const dataCol = collection(db, "public_readings", dev.id, "data");
-      const qData = query(dataCol, orderBy("timestamp", "desc"), limit(limitN));
-      const snap = await getDocs(qData);
-      if (snap.empty) continue;
 
-      const rows = [];
-      snap.forEach((doc) => rows.push(doc.data()));
-      rows.reverse();
+      // ✅ If day/range: use window query so exports match the view (no missing hours)
+      // ✅ If live: keep old last-N for speed, then filter to today window
+      let snap = null;
 
-      const rowsView = rows.filter((d) => {
-        const ms = tsToMs(d.timestamp);
-        return ms && ms >= win.from && ms < win.to;
-      });
+      if (VIEW_MODE === "day" || VIEW_MODE === "range") {
+        const qWin = query(
+          dataCol,
+          orderBy("timestamp", "asc"),
+          where("timestamp", ">=", fromDate),
+          where("timestamp", "<", toDate),
+          limit(WINDOW_LIMIT_DOCS)
+        );
+        snap = await getDocs(qWin);
+        if (snap.empty) continue;
 
-      const finalRows = VIEW_MODE === "live" && rowsView.length === 0 ? rows : rowsView;
-      if (!finalRows.length) continue;
+        const rows = [];
+        snap.forEach((doc) => rows.push(doc.data()));
+        if (!rows.length) continue;
 
-      const csv = rowsToCsv(finalRows, dev.id);
-      downloadTextFile(makeCsvFilename(dev.id, VIEW_MODE), csv);
+        const csv = rowsToCsv(rows, dev.id);
+        downloadTextFile(makeCsvFilename(dev.id, VIEW_MODE), csv);
 
-      totalFiles += 1;
-      totalRows += finalRows.length;
+        totalFiles += 1;
+        totalRows += rows.length;
+      } else {
+        const qLast = query(dataCol, orderBy("timestamp", "desc"), limit(FIRESTORE_LIMIT_DOCS));
+        snap = await getDocs(qLast);
+        if (snap.empty) continue;
+
+        const rows = [];
+        snap.forEach((doc) => rows.push(doc.data()));
+        rows.reverse();
+
+        const rowsView = rows.filter((d) => {
+          const ms = tsToMs(d.timestamp);
+          return ms && ms >= win.from && ms < win.to;
+        });
+
+        const finalRows = rowsView.length === 0 ? rows : rowsView;
+        if (!finalRows.length) continue;
+
+        const csv = rowsToCsv(finalRows, dev.id);
+        downloadTextFile(makeCsvFilename(dev.id, VIEW_MODE), csv);
+
+        totalFiles += 1;
+        totalRows += finalRows.length;
+      }
     } catch (e) {
       console.error("All-devices current-view CSV export failed:", dev.id, e);
     }
