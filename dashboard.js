@@ -9,6 +9,7 @@
 //    -> this prevents browser overload, random “online 12 sec then offline”, late response, UI clears.
 // 3) ✅ Query is written in safest Firestore order: where(...) then orderBy(...)
 // 4) ✅ Range mode has a safety cap (48h) to avoid freezing (kept, not removed).
+// 5) ✅ Device status dot is ALWAYS based on latest 1 doc (independent from day view / range view)
 //
 // ⚠️ REQUIREMENTS (same as before):
 // - Luxon must be loaded in HTML AND default timezone set before this runs:
@@ -54,10 +55,10 @@ const AI = createAI();
    Devices
 ======================= */
 const DEVICES = [
-  { id: "atom_s3_lite_01", name: "Atom S3 Lite 01" },
+  { id: "atom_s3_lite_01", name: "永井研究室 01" },
   { id: "atom_s3_lite_02", name: "学習支援室" },
-  { id: "atom_s3_lite_03", name: "Atom S3 Lite 03" },
-  { id: "atom_s3_lite_04", name: "Atom S3 Lite 04" },
+  { id: "atom_s3_lite_03", name: "永井研究室 02" },
+  { id: "atom_s3_lite_04", name: "自宅" },
 ];
 
 let currentDeviceId = DEVICES[0].id;
@@ -154,9 +155,11 @@ let tempChart = null,
   lightChart = null;
 
 let unsubscribeData = null;
+let unsubscribeStatus = null; // ✅ IMPORTANT (was missing)
+let deviceLastSeenMs = null;
 
 let LIVE_MODE = true;
-let lastDataMs = null;
+let lastDataMs = null; // view last updated (not device status)
 
 const OFFLINE_WARN_MS = 45 * 1000;
 const OFFLINE_ALERT_MS = 5 * 60 * 1000;
@@ -175,12 +178,12 @@ let RANGE_INPUT_TIMER = null;
 const RANGE_INPUT_DEBOUNCE_MS = 200;
 
 // Selected device listener limits:
-const FIRESTORE_LIMIT_DOCS = 6500;   // live last N
-const WINDOW_LIMIT_DOCS = 9000;     // day/range window (increase if you log very fast)
+const FIRESTORE_LIMIT_DOCS = 6500; // live last N
+const WINDOW_LIMIT_DOCS = 9000; // day/range window (increase if you log very fast)
 
 // Global monitoring limits (IMPORTANT):
-const GLOBAL_LIMIT_DOCS = 120;       // keep small
-const GLOBAL_POLL_MS = 15000;        // poll every 15s (stable)
+const GLOBAL_LIMIT_DOCS = 120; // keep small
+const GLOBAL_POLL_MS = 15000; // poll every 15s (stable)
 
 // Safety range cap
 const MAX_RANGE_MS = 48 * 60 * 60 * 1000; // 48 hours
@@ -219,10 +222,9 @@ function endOfTodayMs() {
   return luxon.DateTime.now().setZone("Asia/Tokyo").endOf("day").toMillis() + 1;
 }
 function startOfDayMs(y, m, day) {
-  return luxon.DateTime.fromObject(
-    { year: y, month: m + 1, day },
-    { zone: "Asia/Tokyo" }
-  ).startOf("day").toMillis();
+  return luxon.DateTime.fromObject({ year: y, month: m + 1, day }, { zone: "Asia/Tokyo" })
+    .startOf("day")
+    .toMillis();
 }
 
 /* ===== Display helpers (force JST) ===== */
@@ -279,7 +281,9 @@ function fmtYMDHM(ms) {
 }
 
 function updateChartTitles() {
-  const set = (el, text) => { if (el) el.textContent = text; };
+  const set = (el, text) => {
+    if (el) el.textContent = text;
+  };
 
   if (VIEW_MODE === "day" && selectedDayStartMs) {
     const dayStr = `${fmtYMD(selectedDayStartMs)} ${fmtWeekday(selectedDayStartMs)}`;
@@ -324,10 +328,16 @@ function setAiBadge(level, lang) {
   const L = lang === "jp" ? "jp" : "en";
   const label =
     level === "ALERT"
-      ? (L === "jp" ? "AI: 警告" : "AI: ALERT")
+      ? L === "jp"
+        ? "AI: 警告"
+        : "AI: ALERT"
       : level === "WARN"
-      ? (L === "jp" ? "AI: 注意" : "AI: WARNING")
-      : (L === "jp" ? "AI: 正常" : "AI: OK");
+      ? L === "jp"
+        ? "AI: 注意"
+        : "AI: WARNING"
+      : L === "jp"
+      ? "AI: 正常"
+      : "AI: OK";
 
   if (level === "ALERT") aiStatusBadge.classList.add("alert");
   else if (level === "WARN") aiStatusBadge.classList.add("warn");
@@ -381,8 +391,7 @@ function ensureGlobalModal() {
 
   const msg = document.createElement("div");
   msg.id = "aiGlobalModalMsg";
-  msg.style.cssText =
-    "font-size:14px;line-height:1.5;opacity:.95;margin-bottom:14px;";
+  msg.style.cssText = "font-size:14px;line-height:1.5;opacity:.95;margin-bottom:14px;";
 
   const btnRow = document.createElement("div");
   btnRow.style.cssText = "display:flex;justify-content:flex-end;gap:10px;";
@@ -412,17 +421,13 @@ function showGlobalModal(level, text, eventKey, lang) {
   MODAL_EVENT_KEY = eventKey || null;
 
   const isJP = lang === "jp";
-  const t =
-    level === "critical"
-      ? (isJP ? "AI: 重要アラート" : "AI: Critical Alert")
-      : (isJP ? "AI: Notice" : "AI: Notice");
+  const t = level === "critical" ? (isJP ? "AI: 重要アラート" : "AI: Critical Alert") : isJP ? "AI: Notice" : "AI: Notice";
 
   M.title.textContent = t;
   M.msg.textContent = text || "--";
   M.okBtn.textContent = "OK";
 
-  M.box.style.borderColor =
-    level === "critical" ? "rgba(239,68,68,.7)" : "rgba(255,255,255,.12)";
+  M.box.style.borderColor = level === "critical" ? "rgba(239,68,68,.7)" : "rgba(255,255,255,.12)";
   M.title.style.color = level === "critical" ? "#fca5a5" : "#e5e7eb";
 
   M.overlay.style.display = "flex";
@@ -517,9 +522,7 @@ function runGlobalAI({ ackEventKey = null } = {}) {
     const eventKey = t.eventKey || null;
 
     const minGap = 6000;
-    if (eventKey && LAST_GLOBAL_TOAST_EVENT === eventKey && now - LAST_GLOBAL_TOAST_MS < minGap) {
-      return;
-    }
+    if (eventKey && LAST_GLOBAL_TOAST_EVENT === eventKey && now - LAST_GLOBAL_TOAST_MS < minGap) return;
 
     LAST_GLOBAL_TOAST_EVENT = eventKey;
     LAST_GLOBAL_TOAST_MS = now;
@@ -579,18 +582,19 @@ function startGlobalMonitoring() {
 
 /* =======================
    Status (dot/text)
+   ✅ ALWAYS based on deviceLastSeenMs (latest 1 doc)
 ======================= */
 function renderStatus() {
   if (!statusDot || !statusText) return;
 
-  if (!lastDataMs) {
+  if (!deviceLastSeenMs) {
     statusDot.classList.remove("online");
     statusDot.classList.add("offline");
     statusText.textContent = "Offline (no data)";
     return;
   }
 
-  const ageMs = Date.now() - lastDataMs;
+  const ageMs = Date.now() - deviceLastSeenMs;
 
   if (ageMs < OFFLINE_WARN_MS) {
     statusDot.classList.remove("offline");
@@ -603,7 +607,7 @@ function renderStatus() {
   } else {
     statusDot.classList.remove("online");
     statusDot.classList.add("offline");
-    statusText.textContent = `Offline (last seen ${fmtTime(lastDataMs)})`;
+    statusText.textContent = `Offline (last seen ${fmtTime(deviceLastSeenMs)})`;
   }
 }
 
@@ -795,6 +799,38 @@ function updateCards({ latest, tMax, tMin, hMax, hMin, pMax, pMin, lMax, lMin })
 }
 
 /* =======================
+   Device status subscribe (latest 1 doc)
+   ✅ independent from view (live/day/range)
+======================= */
+function subscribeDeviceStatus() {
+  if (unsubscribeStatus) {
+    unsubscribeStatus();
+    unsubscribeStatus = null;
+  }
+
+  const dataCol = collection(db, "public_readings", currentDeviceId, "data");
+  const qLatest = query(dataCol, orderBy("timestamp", "desc"), limit(1));
+
+  unsubscribeStatus = onSnapshot(
+    qLatest,
+    (snap) => {
+      if (snap.empty) {
+        deviceLastSeenMs = null;
+        renderStatus();
+        return;
+      }
+      const d = snap.docs[0].data();
+      deviceLastSeenMs = tsToMs(d.timestamp);
+      renderStatus();
+    },
+    (err) => {
+      console.error("❌ Status snapshot error:", err);
+      renderStatus();
+    }
+  );
+}
+
+/* =======================
    Firestore subscribe (selected device)
    ✅ FIX: day/range uses window query (full day, no partial)
 ======================= */
@@ -813,7 +849,6 @@ function subscribeToTodayData() {
   let qData = null;
 
   if (VIEW_MODE === "day" || VIEW_MODE === "range") {
-    // ✅ safest Firestore order: where -> where -> orderBy
     qData = query(
       dataCol,
       where("timestamp", ">=", fromDate),
@@ -822,11 +857,7 @@ function subscribeToTodayData() {
       limit(WINDOW_LIMIT_DOCS)
     );
   } else {
-    qData = query(
-      dataCol,
-      orderBy("timestamp", "desc"),
-      limit(FIRESTORE_LIMIT_DOCS)
-    );
+    qData = query(dataCol, orderBy("timestamp", "desc"), limit(FIRESTORE_LIMIT_DOCS));
   }
 
   unsubscribeData = onSnapshot(
@@ -836,6 +867,7 @@ function subscribeToTodayData() {
         lastDataMs = null;
         CURRENT_VIEW_ROWS = [];
 
+        // status is from subscribeDeviceStatus() (latest 1 doc)
         renderStatus();
         if (lastUpdatedText) lastUpdatedText.textContent = "--";
         setAllCardTextToDash();
@@ -848,13 +880,10 @@ function subscribeToTodayData() {
       const rows = [];
       snap.forEach((doc) => rows.push(doc.data()));
 
-      // live query is desc -> reverse to asc
       if (VIEW_MODE === "live") rows.reverse();
 
-      // day/range already in-window
       let finalRows = rows;
 
-      // live still filters to today window (in case last-N includes yesterday)
       if (VIEW_MODE === "live") {
         const win2 = getActiveWindow();
         const filtered = rows.filter((d) => {
@@ -866,10 +895,20 @@ function subscribeToTodayData() {
 
       CURRENT_VIEW_ROWS = finalRows;
 
-      const tempPts = [], humPts = [], pressPts = [], lightPts = [];
+      const tempPts = [],
+        humPts = [],
+        pressPts = [],
+        lightPts = [];
 
       let latest = null;
-      let tMax = null, tMin = null, hMax = null, hMin = null, pMax = null, pMin = null, lMax = null, lMin = null;
+      let tMax = null,
+        tMin = null,
+        hMax = null,
+        hMin = null,
+        pMax = null,
+        pMin = null,
+        lMax = null,
+        lMin = null;
 
       finalRows.forEach((d) => {
         const ms = tsToMs(d.timestamp);
@@ -899,30 +938,25 @@ function subscribeToTodayData() {
         }
       });
 
-   lastDataMs = tsToMs(latest?.timestamp);
+      lastDataMs = tsToMs(latest?.timestamp);
 
-renderStatus();
-if (lastUpdatedText) lastUpdatedText.textContent = fmtDateTime(lastDataMs);
+      renderStatus(); // uses deviceLastSeenMs (not lastDataMs)
+      if (lastUpdatedText) lastUpdatedText.textContent = fmtDateTime(lastDataMs);
 
-updateCards({ latest, tMax, tMin, hMax, hMin, pMax, pMin, lMax, lMin });
-updateCharts({ tempPts, humPts, pressPts, lightPts });
+      updateCards({ latest, tMax, tMin, hMax, hMin, pMax, pMin, lMax, lMin });
+      updateCharts({ tempPts, humPts, pressPts, lightPts });
 
-// ✅ ALWAYS force chart window after setting data
-forceWindowToActiveRange();
+      forceWindowToActiveRange();
 
-         updateAIUI();
+      updateAIUI();
     },
     (err) => {
       console.error("❌ Firestore onSnapshot error:", err);
-
       renderStatus();
       updateAIUI();
     }
   );
-
 }
- 
-
 
 /* =======================
    Device dropdown
@@ -943,6 +977,9 @@ function setupDeviceDropdown() {
 
   deviceSelect.addEventListener("change", () => {
     currentDeviceId = deviceSelect.value;
+
+    // ✅ restart status subscription for new device
+    subscribeDeviceStatus();
 
     VIEW_MODE = "live";
     selectedDayStartMs = null;
@@ -1056,21 +1093,21 @@ function isSelectedDay(y, m, day) {
 }
 function isTodayCell(y, m, day) {
   const t = luxon.DateTime.now().setZone("Asia/Tokyo");
-  return y === t.year && m === (t.month - 1) && day === t.day;
+  return y === t.year && m === t.month - 1 && day === t.day;
 }
 
 function renderCalendar() {
   if (!calGridEl || !calTitleEl) return;
 
   const now = luxon.DateTime.now().setZone("Asia/Tokyo");
-  const isCurrentMonth = calYear === now.year && calMonth === (now.month - 1);
+  const isCurrentMonth = calYear === now.year && calMonth === now.month - 1;
   if (calNextBtn) calNextBtn.disabled = isCurrentMonth;
 
   calTitleEl.textContent = monthName(calYear, calMonth);
   calGridEl.innerHTML = "";
 
   const first = luxon.DateTime.fromObject({ year: calYear, month: calMonth + 1, day: 1 }, { zone: "Asia/Tokyo" });
-  const startWeekday = first.weekday % 7; // Mon=1..Sun=7
+  const startWeekday = first.weekday % 7;
   const daysInMonth = first.daysInMonth;
 
   for (let i = 0; i < startWeekday; i++) {
@@ -1174,9 +1211,18 @@ function validateAndApplyRangeFromInputs() {
   const s = parseDateTimeLocalToMs(rangeStartEl.value);
   const e = parseDateTimeLocalToMs(rangeEndEl.value);
 
-  if (!s || !e) { setMsg(""); return; }
-  if (s > nowMs || e > nowMs) { setMsg("Future time is not allowed. Please select up to the current time."); return; }
-  if (s >= e) { setMsg("Start must be earlier than End."); return; }
+  if (!s || !e) {
+    setMsg("");
+    return;
+  }
+  if (s > nowMs || e > nowMs) {
+    setMsg("Future time is not allowed. Please select up to the current time.");
+    return;
+  }
+  if (s >= e) {
+    setMsg("Start must be earlier than End.");
+    return;
+  }
 
   if (e - s > MAX_RANGE_MS) {
     setMsg("Range too large. Please select 48 hours or less.");
@@ -1222,9 +1268,7 @@ function setupRangeAutoUpdate() {
 ======================= */
 function msToJst(ms) {
   if (!ms) return "";
-  return new Date(ms)
-    .toLocaleString("sv-SE", { timeZone: "Asia/Tokyo", hour12: false })
-    .replace("T", " ");
+  return new Date(ms).toLocaleString("sv-SE", { timeZone: "Asia/Tokyo", hour12: false }).replace("T", " ");
 }
 
 function safeCsv(v) {
@@ -1248,7 +1292,9 @@ function rowsToCsv(rows, deviceId) {
       typeof r.Humidity === "number" ? r.Humidity : "",
       typeof r.Pressure === "number" ? r.Pressure : "",
       typeof r.Light === "number" ? r.Light : "",
-    ].map(safeCsv).join(",");
+    ]
+      .map(safeCsv)
+      .join(",");
     lines.push(line);
   }
   return lines.join("\n");
@@ -1452,7 +1498,7 @@ function boot() {
   setupDeviceDropdown();
   setupGoLiveButton();
   setupCalendarNav();
-  setupRangeAutoUpdate();     // kept
+  setupRangeAutoUpdate(); // kept
   setupLangSelect();
   setupCsvButtons();
 
@@ -1463,9 +1509,10 @@ function boot() {
   calMonth = nowJ.month - 1;
   renderCalendar();
 
+  // ✅ start both:
   subscribeToTodayData();
+  subscribeDeviceStatus(); // ✅ IMPORTANT (keeps status correct for day/range too)
 
-  // ✅ FIXED GLOBAL MONITORING (polling)
   startGlobalMonitoring();
 
   startLiveClock();
