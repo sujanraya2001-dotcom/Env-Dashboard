@@ -1,4 +1,4 @@
-// dashboard.js (FULL WORKING - OLD FEATURES KEPT + LATEST BUG FIXED)
+// dashboard.js (FULL WORKING - OLD FEATURES KEPT + NEW FEATURES ADDED)
 // ✅ Keeps your old dashboard behavior (devices dropdown, live cards, charts, zoom/pan, calendar day view,
 //    optional range, CSV export, AI panel, status dot, Go Live, JST consistency)
 //
@@ -10,6 +10,21 @@
 // 3) ✅ Query is written in safest Firestore order: where(...) then orderBy(...)
 // 4) ✅ Range mode has a safety cap (48h) to avoid freezing (kept, not removed).
 // 5) ✅ Device status dot is ALWAYS based on latest 1 doc (independent from day view / range view)
+//
+// ✅ NEW FEATURES (requested):
+// A) Live mode cards:
+//    - Keep behavior same, but add time to Today’s Max/Min text:
+//      Today’s Max: 24.88 °C at 13:42
+//      Today’s Min: 22.25 °C at 06:18
+//    (applies to Temp/Hum/Press/Light)
+//
+// B) Day selection + Range:
+//    - Cards must update to selected window’s max/min (NOT today)
+//    - Labels change to selected date/range (Option 1 -> needs HTML label spans)
+//      01/15 Max: 24.88 °C at 13:42
+//      01/15 Min: 22.25 °C at 06:18
+//      01/15–01/16 Max: ...
+//    - The big “live value” (Now) must be blank (“--”) in day/range mode to avoid confusion.
 //
 // ⚠️ REQUIREMENTS (same as before):
 // - Luxon must be loaded in HTML AND default timezone set before this runs:
@@ -95,6 +110,23 @@ const pressMinEl = document.getElementById("pressMin");
 const lightNowEl = document.getElementById("lightNow");
 const lightMaxEl = document.getElementById("lightMax");
 const lightMinEl = document.getElementById("lightMin");
+
+/* =======================
+   DOM (card label spans)  ✅ NEW (Option 1)
+   NOTE: These IDs must exist in HTML for label changing to work.
+   If they do not exist yet, code will silently ignore.
+======================= */
+const tempMaxLabelEl = document.getElementById("tempMaxLabel");
+const tempMinLabelEl = document.getElementById("tempMinLabel");
+
+const humMaxLabelEl = document.getElementById("humMaxLabel");
+const humMinLabelEl = document.getElementById("humMinLabel");
+
+const pressMaxLabelEl = document.getElementById("pressMaxLabel");
+const pressMinLabelEl = document.getElementById("pressMinLabel");
+
+const lightMaxLabelEl = document.getElementById("lightMaxLabel");
+const lightMinLabelEl = document.getElementById("lightMinLabel");
 
 /* =======================
    DOM (charts)
@@ -251,6 +283,18 @@ function fmtDateTime(ms) {
   });
 }
 
+// ✅ NEW: "at HH:mm" time format (JST) for max/min lines
+function fmtHM(ms) {
+  if (!ms) return "--";
+  return luxon.DateTime.fromMillis(ms, { zone: "Asia/Tokyo" }).toFormat("HH:mm");
+}
+
+// ✅ NEW: label date "MM/DD" (JST)
+function fmtMD(ms) {
+  if (!ms) return "--";
+  return luxon.DateTime.fromMillis(ms, { zone: "Asia/Tokyo" }).toFormat("LL/dd");
+}
+
 /* ===== datetime-local handling (treat input as JST) ===== */
 function toJstDateTimeLocalValueFromMs(ms) {
   const dt = luxon.DateTime.fromMillis(ms, { zone: "Asia/Tokyo" });
@@ -308,6 +352,55 @@ function updateChartTitles() {
   set(humChartTitleEl, "Humidity (Today)");
   set(pressChartTitleEl, "Pressure (Today)");
   set(lightChartTitleEl, "Light (Today)");
+}
+
+/* =======================
+   ✅ NEW: Card label text switching (Option 1)
+   - Live: "Today's Max:" / "Today's Min:"
+   - Day:  "01/15 Max:" / "01/15 Min:"
+   - Range:"01/15–01/16 Max:" / "01/15–01/16 Min:"
+======================= */
+function getCardLabelPrefix() {
+  if (VIEW_MODE === "day" && selectedDayStartMs) {
+    return fmtMD(selectedDayStartMs); // "01/15"
+  }
+  if (VIEW_MODE === "range" && typeof rangeStartMs === "number" && typeof rangeEndMs === "number") {
+    const end = Math.min(rangeEndMs, Date.now());
+    return `${fmtMD(rangeStartMs)}–${fmtMD(end)}`; // "01/15–01/16"
+  }
+  return "Today's";
+}
+
+function setOneLabel(el, text) {
+  if (!el) return; // HTML might not be updated yet
+  el.textContent = text;
+}
+
+function setCardLabelsForView() {
+  const prefix = getCardLabelPrefix();
+
+  if (VIEW_MODE === "live") {
+    // Keep the same meaning as your screenshot
+    setOneLabel(tempMaxLabelEl, "Today's Max:");
+    setOneLabel(tempMinLabelEl, "Today's Min:");
+    setOneLabel(humMaxLabelEl, "Today's Max:");
+    setOneLabel(humMinLabelEl, "Today's Min:");
+    setOneLabel(pressMaxLabelEl, "Today's Max:");
+    setOneLabel(pressMinLabelEl, "Today's Min:");
+    setOneLabel(lightMaxLabelEl, "Today's Max:");
+    setOneLabel(lightMinLabelEl, "Today's Min:");
+    return;
+  }
+
+  // Day / Range
+  setOneLabel(tempMaxLabelEl, `${prefix} Max:`);
+  setOneLabel(tempMinLabelEl, `${prefix} Min:`);
+  setOneLabel(humMaxLabelEl, `${prefix} Max:`);
+  setOneLabel(humMinLabelEl, `${prefix} Min:`);
+  setOneLabel(pressMaxLabelEl, `${prefix} Max:`);
+  setOneLabel(pressMinLabelEl, `${prefix} Min:`);
+  setOneLabel(lightMaxLabelEl, `${prefix} Max:`);
+  setOneLabel(lightMinLabelEl, `${prefix} Min:`);
 }
 
 /* =======================
@@ -421,7 +514,14 @@ function showGlobalModal(level, text, eventKey, lang) {
   MODAL_EVENT_KEY = eventKey || null;
 
   const isJP = lang === "jp";
-  const t = level === "critical" ? (isJP ? "AI: 重要アラート" : "AI: Critical Alert") : isJP ? "AI: Notice" : "AI: Notice";
+  const t =
+    level === "critical"
+      ? isJP
+        ? "AI: 重要アラート"
+        : "AI: Critical Alert"
+      : isJP
+      ? "AI: Notice"
+      : "AI: Notice";
 
   M.title.textContent = t;
   M.msg.textContent = text || "--";
@@ -775,27 +875,48 @@ function setAllCardTextToDash() {
   if (lightMinEl) lightMinEl.textContent = "--";
 }
 
-function updateCards({ latest, tMax, tMin, hMax, hMin, pMax, pMin, lMax, lMin }) {
+// ✅ UPDATED: supports max/min time AND blanks "Now" in day/range mode
+function updateCards({
+  latest,
+  tMax, tMaxMs, tMin, tMinMs,
+  hMax, hMaxMs, hMin, hMinMs,
+  pMax, pMaxMs, pMin, pMinMs,
+  lMax, lMaxMs, lMin, lMinMs,
+}) {
+  // Always ensure labels match current view mode (safe even if HTML not updated yet)
+  setCardLabelsForView();
+
   if (!latest) {
     setAllCardTextToDash();
     return;
   }
 
-  if (tempNowEl) tempNowEl.textContent = `${formatNum(latest.Temperature, 2)} °C`;
-  if (tempMaxEl) tempMaxEl.textContent = `${formatNum(tMax, 2)} °C`;
-  if (tempMinEl) tempMinEl.textContent = `${formatNum(tMin, 2)} °C`;
+  // Live mode: show live "Now" big values
+  if (VIEW_MODE === "live") {
+    if (tempNowEl) tempNowEl.textContent = `${formatNum(latest.Temperature, 2)} °C`;
+    if (humNowEl) humNowEl.textContent = `${formatNum(latest.Humidity, 2)} %`;
+    if (pressNowEl) pressNowEl.textContent = `${formatNum(latest.Pressure, 1)} hPa`;
+    if (lightNowEl) lightNowEl.textContent = `${formatNum(latest.Light, 1)} lux`;
+  } else {
+    // Day/Range: blank the big "Now" value to avoid confusion
+    if (tempNowEl) tempNowEl.textContent = "--";
+    if (humNowEl) humNowEl.textContent = "--";
+    if (pressNowEl) pressNowEl.textContent = "--";
+    if (lightNowEl) lightNowEl.textContent = "--";
+  }
 
-  if (humNowEl) humNowEl.textContent = `${formatNum(latest.Humidity, 2)} %`;
-  if (humMaxEl) humMaxEl.textContent = `${formatNum(hMax, 2)} %`;
-  if (humMinEl) humMinEl.textContent = `${formatNum(hMin, 2)} %`;
+  // Max/Min formatting: value + "at HH:mm" (all modes)
+  if (tempMaxEl) tempMaxEl.textContent = `${formatNum(tMax, 2)} °C at ${fmtHM(tMaxMs)}`;
+  if (tempMinEl) tempMinEl.textContent = `${formatNum(tMin, 2)} °C at ${fmtHM(tMinMs)}`;
 
-  if (pressNowEl) pressNowEl.textContent = `${formatNum(latest.Pressure, 1)} hPa`;
-  if (pressMaxEl) pressMaxEl.textContent = `${formatNum(pMax, 1)} hPa`;
-  if (pressMinEl) pressMinEl.textContent = `${formatNum(pMin, 1)} hPa`;
+  if (humMaxEl) humMaxEl.textContent = `${formatNum(hMax, 2)} % at ${fmtHM(hMaxMs)}`;
+  if (humMinEl) humMinEl.textContent = `${formatNum(hMin, 2)} % at ${fmtHM(hMinMs)}`;
 
-  if (lightNowEl) lightNowEl.textContent = `${formatNum(latest.Light, 1)} lux`;
-  if (lightMaxEl) lightMaxEl.textContent = `${formatNum(lMax, 1)} lux`;
-  if (lightMinEl) lightMinEl.textContent = `${formatNum(lMin, 1)} lux`;
+  if (pressMaxEl) pressMaxEl.textContent = `${formatNum(pMax, 1)} hPa at ${fmtHM(pMaxMs)}`;
+  if (pressMinEl) pressMinEl.textContent = `${formatNum(pMin, 1)} hPa at ${fmtHM(pMinMs)}`;
+
+  if (lightMaxEl) lightMaxEl.textContent = `${formatNum(lMax, 1)} lux at ${fmtHM(lMaxMs)}`;
+  if (lightMinEl) lightMinEl.textContent = `${formatNum(lMin, 1)} lux at ${fmtHM(lMinMs)}`;
 }
 
 /* =======================
@@ -840,6 +961,9 @@ function subscribeToTodayData() {
     unsubscribeData = null;
   }
 
+  // ensure labels reflect view immediately (even before data arrives)
+  setCardLabelsForView();
+
   const dataCol = collection(db, "public_readings", currentDeviceId, "data");
 
   const win = getActiveWindow();
@@ -870,9 +994,11 @@ function subscribeToTodayData() {
         // status is from subscribeDeviceStatus() (latest 1 doc)
         renderStatus();
         if (lastUpdatedText) lastUpdatedText.textContent = "--";
-        setAllCardTextToDash();
-        updateCharts({ tempPts: [], humPts: [], pressPts: [], lightPts: [] });
 
+        setCardLabelsForView();
+        setAllCardTextToDash();
+
+        updateCharts({ tempPts: [], humPts: [], pressPts: [], lightPts: [] });
         updateAIUI();
         return;
       }
@@ -901,40 +1027,70 @@ function subscribeToTodayData() {
         lightPts = [];
 
       let latest = null;
-      let tMax = null,
-        tMin = null,
-        hMax = null,
-        hMin = null,
-        pMax = null,
-        pMin = null,
-        lMax = null,
-        lMin = null;
+
+      // ✅ NEW: max/min and time holders
+      let tMax = null, tMin = null, tMaxMs = null, tMinMs = null;
+      let hMax = null, hMin = null, hMaxMs = null, hMinMs = null;
+      let pMax = null, pMin = null, pMaxMs = null, pMinMs = null;
+      let lMax = null, lMin = null, lMaxMs = null, lMinMs = null;
 
       finalRows.forEach((d) => {
         const ms = tsToMs(d.timestamp);
         if (!ms) return;
 
+        // latest is used for "Now" only in live mode (we blank it in day/range)
         latest = d;
 
         if (typeof d.Temperature === "number") {
           tempPts.push({ x: ms, y: d.Temperature });
-          tMax = tMax === null ? d.Temperature : Math.max(tMax, d.Temperature);
-          tMin = tMin === null ? d.Temperature : Math.min(tMin, d.Temperature);
+
+          if (tMax === null || d.Temperature > tMax) {
+            tMax = d.Temperature;
+            tMaxMs = ms;
+          }
+          if (tMin === null || d.Temperature < tMin) {
+            tMin = d.Temperature;
+            tMinMs = ms;
+          }
         }
+
         if (typeof d.Humidity === "number") {
           humPts.push({ x: ms, y: d.Humidity });
-          hMax = hMax === null ? d.Humidity : Math.max(hMax, d.Humidity);
-          hMin = hMin === null ? d.Humidity : Math.min(hMin, d.Humidity);
+
+          if (hMax === null || d.Humidity > hMax) {
+            hMax = d.Humidity;
+            hMaxMs = ms;
+          }
+          if (hMin === null || d.Humidity < hMin) {
+            hMin = d.Humidity;
+            hMinMs = ms;
+          }
         }
+
         if (typeof d.Pressure === "number") {
           pressPts.push({ x: ms, y: d.Pressure });
-          pMax = pMax === null ? d.Pressure : Math.max(pMax, d.Pressure);
-          pMin = pMin === null ? d.Pressure : Math.min(pMin, d.Pressure);
+
+          if (pMax === null || d.Pressure > pMax) {
+            pMax = d.Pressure;
+            pMaxMs = ms;
+          }
+          if (pMin === null || d.Pressure < pMin) {
+            pMin = d.Pressure;
+            pMinMs = ms;
+          }
         }
+
         if (typeof d.Light === "number") {
           lightPts.push({ x: ms, y: d.Light });
-          lMax = lMax === null ? d.Light : Math.max(lMax, d.Light);
-          lMin = lMin === null ? d.Light : Math.min(lMin, d.Light);
+
+          if (lMax === null || d.Light > lMax) {
+            lMax = d.Light;
+            lMaxMs = ms;
+          }
+          if (lMin === null || d.Light < lMin) {
+            lMin = d.Light;
+            lMinMs = ms;
+          }
         }
       });
 
@@ -943,11 +1099,17 @@ function subscribeToTodayData() {
       renderStatus(); // uses deviceLastSeenMs (not lastDataMs)
       if (lastUpdatedText) lastUpdatedText.textContent = fmtDateTime(lastDataMs);
 
-      updateCards({ latest, tMax, tMin, hMax, hMin, pMax, pMin, lMax, lMin });
+      updateCards({
+        latest,
+        tMax, tMaxMs, tMin, tMinMs,
+        hMax, hMaxMs, hMin, hMinMs,
+        pMax, pMaxMs, pMin, pMinMs,
+        lMax, lMaxMs, lMin, lMinMs,
+      });
+
       updateCharts({ tempPts, humPts, pressPts, lightPts });
 
       forceWindowToActiveRange();
-
       updateAIUI();
     },
     (err) => {
@@ -990,6 +1152,7 @@ function setupDeviceDropdown() {
     LIVE_MODE = true;
     renderGoLiveButton();
     updateChartTitles();
+    setCardLabelsForView();
 
     syncRangeMaxNow();
     const nowJ = luxon.DateTime.now().setZone("Asia/Tokyo");
@@ -1015,6 +1178,7 @@ function setupGoLiveButton() {
     rangeEndMs = null;
     setMsg("");
     updateChartTitles();
+    setCardLabelsForView();
 
     if (rangeStartEl) rangeStartEl.value = "";
     if (rangeEndEl) rangeEndEl.value = "";
@@ -1067,6 +1231,7 @@ function startDayWatcher() {
       LIVE_MODE = true;
       renderGoLiveButton();
       updateChartTitles();
+      setCardLabelsForView();
 
       syncRangeMaxNow();
       renderCalendar();
@@ -1140,6 +1305,7 @@ function renderCalendar() {
       LIVE_MODE = false;
       renderGoLiveButton();
       updateChartTitles();
+      setCardLabelsForView();
 
       rangeStartMs = null;
       rangeEndMs = null;
@@ -1239,6 +1405,7 @@ function validateAndApplyRangeFromInputs() {
   LIVE_MODE = false;
   renderGoLiveButton();
   updateChartTitles();
+  setCardLabelsForView();
 
   forceWindowToActiveRange();
   renderCalendar();
@@ -1520,6 +1687,7 @@ function boot() {
   startDayWatcher();
 
   renderGoLiveButton();
+  setCardLabelsForView(); // ✅ NEW
   updateAIUI();
   runGlobalAI();
 }

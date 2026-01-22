@@ -70,8 +70,14 @@
         </div>
         <div id="tempNow" class="sensorNow">--</div>
         <div class="sensorMeta">
-          <div>Today’s Max: <span id="tempMax">--</span></div>
-          <div>Today’s Min: <span id="tempMin">--</span></div>
+          <div>
+            <span id="tempMaxLabel">Today’s Max:</span><!-- ✅ label span added -->
+            <span id="tempMax">--</span>
+          </div>
+          <div>
+            <span id="tempMinLabel">Today’s Min:</span><!-- ✅ label span added -->
+            <span id="tempMin">--</span>
+          </div>
         </div>
       </div>
 
@@ -81,8 +87,14 @@
         </div>
         <div id="humNow" class="sensorNow">--</div>
         <div class="sensorMeta">
-          <div>Today’s Max: <span id="humMax">--</span></div>
-          <div>Today’s Min: <span id="humMin">--</span></div>
+          <div>
+            <span id="humMaxLabel">Today’s Max:</span><!-- ✅ label span added -->
+            <span id="humMax">--</span>
+          </div>
+          <div>
+            <span id="humMinLabel">Today’s Min:</span><!-- ✅ label span added -->
+            <span id="humMin">--</span>
+          </div>
         </div>
       </div>
 
@@ -92,8 +104,14 @@
         </div>
         <div id="pressNow" class="sensorNow">--</div>
         <div class="sensorMeta">
-          <div>Today’s Max: <span id="pressMax">--</span></div>
-          <div>Today’s Min: <span id="pressMin">--</span></div>
+          <div>
+            <span id="pressMaxLabel">Today’s Max:</span><!-- ✅ label span added -->
+            <span id="pressMax">--</span>
+          </div>
+          <div>
+            <span id="pressMinLabel">Today’s Min:</span><!-- ✅ label span added -->
+            <span id="pressMin">--</span>
+          </div>
         </div>
       </div>
 
@@ -103,35 +121,42 @@
         </div>
         <div id="lightNow" class="sensorNow">--</div>
         <div class="sensorMeta">
-          <div>Today’s Max: <span id="lightMax">--</span></div>
-          <div>Today’s Min: <span id="lightMin">--</span></div>
+          <div>
+            <span id="lightMaxLabel">Today’s Max:</span><!-- ✅ label span added -->
+            <span id="lightMax">--</span>
+          </div>
+          <div>
+            <span id="lightMinLabel">Today’s Min:</span><!-- ✅ label span added -->
+            <span id="lightMin">--</span>
+          </div>
         </div>
       </div>
     </section>
-<!-- ===== CSV Export ===== -->
-<section class="csvSection">
-  <div class="csvPanel">
-    <div class="csvHead">
-      <div class="csvTitle">CSV Export</div>
-      <div id="csvHintText" class="csvHint">Export timestamp (JST) + Temperature/Humidity/Pressure/Light.</div>
-    </div>
 
-    <div class="csvRow">
-      <button id="csvDownloadBtn" type="button" class="csvBtn">
-        Download CSV (Current View)
-      </button>
+    <!-- ===== CSV Export ===== -->
+    <section class="csvSection">
+      <div class="csvPanel">
+        <div class="csvHead">
+          <div class="csvTitle">CSV Export</div>
+          <div id="csvHintText" class="csvHint">Export timestamp (JST) + Temperature/Humidity/Pressure/Light.</div>
+        </div>
 
-      <button id="csvDownloadAllBtn" type="button" class="csvBtn csvBtn2">
-        Download CSV (Last N docs)
-      </button>
+        <div class="csvRow">
+          <button id="csvDownloadBtn" type="button" class="csvBtn">
+            Download CSV (Current View)
+          </button>
 
-      <div class="csvLimitWrap">
-        <label class="csvLabel">N:</label>
-        <input id="csvLimitInput" type="number" min="100" max="20000" step="100" value="6500" />
+          <button id="csvDownloadAllBtn" type="button" class="csvBtn csvBtn2">
+            Download CSV (Last N docs)
+          </button>
+
+          <div class="csvLimitWrap">
+            <label class="csvLabel">N:</label>
+            <input id="csvLimitInput" type="number" min="100" max="20000" step="100" value="6500" />
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
-</section>
+    </section>
 
     <!-- ===== Live button ===== -->
     <div class="liveControls">
