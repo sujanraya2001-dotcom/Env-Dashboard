@@ -899,30 +899,29 @@ function subscribeToTodayData() {
         }
       });
 
-      lastDataMs = tsToMs(latest?.timestamp);
+   lastDataMs = tsToMs(latest?.timestamp);
 
-      renderStatus();
-      if (lastUpdatedText) lastUpdatedText.textContent = fmtDateTime(lastDataMs);
+renderStatus();
+if (lastUpdatedText) lastUpdatedText.textContent = fmtDateTime(lastDataMs);
 
-      updateCards({ latest, tMax, tMin, hMax, hMin, pMax, pMin, lMax, lMin });
-      updateCharts({ tempPts, humPts, pressPts, lightPts });
+updateCards({ latest, tMax, tMin, hMax, hMin, pMax, pMin, lMax, lMin });
+updateCharts({ tempPts, humPts, pressPts, lightPts });
 
-      if (VIEW_MODE === "day" || VIEW_MODE === "range") {
-        forceWindowToActiveRange();
-      }
+// ✅ ALWAYS force chart window after setting data
+forceWindowToActiveRange();
 
-      updateAIUI();
-    },
-    (err) => {
-      console.error("❌ Firestore onSnapshot error:", err);
+updateAIUI();
+},
+(err) => {
+  console.error("❌ Firestore onSnapshot error:", err);
 
-      // Do not destroy everything aggressively on a transient error.
-      // Keep current charts/cards visible, but mark offline if needed.
-      renderStatus();
-      updateAIUI();
-    }
-  );
+  // Do not destroy everything aggressively on a transient error.
+  // Keep current charts/cards visible, but mark offline if needed.
+  renderStatus();
+  updateAIUI();
 }
+);
+   
 
 /* =======================
    Device dropdown
