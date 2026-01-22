@@ -176,7 +176,7 @@ const RANGE_INPUT_DEBOUNCE_MS = 200;
 
 // Selected device listener limits:
 const FIRESTORE_LIMIT_DOCS = 6500;   // live last N
-const WINDOW_LIMIT_DOCS = 10000;     // day/range window (increase if you log very fast)
+const WINDOW_LIMIT_DOCS = 9000;     // day/range window (increase if you log very fast)
 
 // Global monitoring limits (IMPORTANT):
 const GLOBAL_LIMIT_DOCS = 120;       // keep small
