@@ -910,18 +910,19 @@ updateCharts({ tempPts, humPts, pressPts, lightPts });
 // ✅ ALWAYS force chart window after setting data
 forceWindowToActiveRange();
 
-updateAIUI();
-},
-(err) => {
-  console.error("❌ Firestore onSnapshot error:", err);
+         updateAIUI();
+    },
+    (err) => {
+      console.error("❌ Firestore onSnapshot error:", err);
 
-  // Do not destroy everything aggressively on a transient error.
-  // Keep current charts/cards visible, but mark offline if needed.
-  renderStatus();
-  updateAIUI();
+      renderStatus();
+      updateAIUI();
+    }
+  );
+
 }
-);
-   
+ 
+
 
 /* =======================
    Device dropdown
