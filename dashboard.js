@@ -1,37 +1,12 @@
-// dashboard.js (FULL WORKING - OLD FEATURES KEPT + NEW FEATURES ADDED)
+// dashboard.js (FULL WORKING - OLD FEATURES KEPT + ✅ Paused-Live Buffer Option B added)
+//
 // ✅ Keeps your old dashboard behavior (devices dropdown, live cards, charts, zoom/pan, calendar day view,
 //    optional range, CSV export, AI panel, status dot, Go Live, JST consistency)
 //
-// 🔥 LATEST BUG FIXES (your current problems):
-// 1) ✅ Day view always shows FULL DAY (00:00 -> 23:59 JST) using Firestore window query
-//    -> no more “only 12 hours shown” caused by limit+filter.
-// 2) ✅ GLOBAL monitoring no longer uses onSnapshot (real-time) — it uses polling getDocs()
-//    -> this prevents browser overload, random “online 12 sec then offline”, late response, UI clears.
-// 3) ✅ Query is written in safest Firestore order: where(...) then orderBy(...)
-// 4) ✅ Range mode has a safety cap (48h) to avoid freezing (kept, not removed).
-// 5) ✅ Device status dot is ALWAYS based on latest 1 doc (independent from day view / range view)
-//
-// ✅ NEW FEATURES (requested):
-// A) Live mode cards:
-//    - Keep behavior same, but add time to Today’s Max/Min text:
-//      Today’s Max: 24.88 °C at 13:42
-//      Today’s Min: 22.25 °C at 06:18
-//    (applies to Temp/Hum/Press/Light)
-//
-// B) Day selection + Range:
-//    - Cards must update to selected window’s max/min (NOT today)
-//    - Labels change to selected date/range (Option 1 -> needs HTML label spans)
-//      01/15 Max: 24.88 °C at 13:42
-//      01/15 Min: 22.25 °C at 06:18
-//      01/15–01/16 Max: ...
-//    - The big “live value” (Now) must be blank (“--”) in day/range mode to avoid confusion.
-//
-// ⚠️ REQUIREMENTS (same as before):
-// - Luxon must be loaded in HTML AND default timezone set before this runs:
-//   luxon.Settings.defaultZone = "Asia/Tokyo";
-// - Chart.js + Luxon adapter + chartjs-plugin-zoom loaded
-// - firebase-config.js exports firebaseConfig
-// - ai.js exports createAI()
+// ✅ NEW (your request):
+// - When you zoom/pan (LIVE_MODE=false) in LIVE view, the UI will FREEZE (no redraw),
+//   but newest incoming data will be buffered.
+// - Dashboard updates to latest buffered data ONLY when you click Go Live.
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import {
@@ -223,6 +198,14 @@ const MAX_RANGE_MS = 48 * 60 * 60 * 1000; // 48 hours
 let CURRENT_VIEW_ROWS = [];
 
 /* =======================
+   ✅ NEW: Paused Live Buffer (Option B)
+   - When VIEW_MODE="live" and LIVE_MODE=false, UI freeze,
+     but store newest incoming rows here.
+======================= */
+let PAUSED_LIVE_BUFFER = null; // array of doc.data() in ASC order
+let PAUSED_LIVE_LAST_MS = null;
+
+/* =======================
    Language Mode
 ======================= */
 let LANG_MODE = "auto";
@@ -356,9 +339,6 @@ function updateChartTitles() {
 
 /* =======================
    ✅ NEW: Card label text switching (Option 1)
-   - Live: "Today's Max:" / "Today's Min:"
-   - Day:  "01/15 Max:" / "01/15 Min:"
-   - Range:"01/15–01/16 Max:" / "01/15–01/16 Min:"
 ======================= */
 function getCardLabelPrefix() {
   if (VIEW_MODE === "day" && selectedDayStartMs) {
@@ -380,7 +360,6 @@ function setCardLabelsForView() {
   const prefix = getCardLabelPrefix();
 
   if (VIEW_MODE === "live") {
-    // Keep the same meaning as your screenshot
     setOneLabel(tempMaxLabelEl, "Today's Max:");
     setOneLabel(tempMinLabelEl, "Today's Min:");
     setOneLabel(humMaxLabelEl, "Today's Max:");
@@ -392,7 +371,6 @@ function setCardLabelsForView() {
     return;
   }
 
-  // Day / Range
   setOneLabel(tempMaxLabelEl, `${prefix} Max:`);
   setOneLabel(tempMinLabelEl, `${prefix} Min:`);
   setOneLabel(humMaxLabelEl, `${prefix} Max:`);
@@ -404,7 +382,7 @@ function setCardLabelsForView() {
 }
 
 /* =======================
-   Go Live button text
+   Go Live button text (kept as your old behavior)
 ======================= */
 function renderGoLiveButton() {
   if (!goLiveBtn) return;
@@ -682,7 +660,6 @@ function startGlobalMonitoring() {
 
 /* =======================
    Status (dot/text)
-   ✅ ALWAYS based on deviceLastSeenMs (latest 1 doc)
 ======================= */
 function renderStatus() {
   if (!statusDot || !statusText) return;
@@ -798,19 +775,16 @@ function initCharts() {
 function getActiveWindow() {
   const now = Date.now();
 
-  // Day view: EXACT day 00:00 -> 24:00 (JST)
   if (VIEW_MODE === "day" && selectedDayStartMs) {
     return { from: selectedDayStartMs, to: selectedDayStartMs + 24 * 60 * 60 * 1000 };
   }
 
-  // Range view (kept)
   if (VIEW_MODE === "range" && typeof rangeStartMs === "number" && typeof rangeEndMs === "number") {
     const to = Math.min(rangeEndMs, now);
     const from = Math.min(rangeStartMs, to);
     return { from, to };
   }
 
-  // Live defaults to today window
   return { from: startOfTodayMs(), to: endOfTodayMs() };
 }
 
@@ -875,7 +849,6 @@ function setAllCardTextToDash() {
   if (lightMinEl) lightMinEl.textContent = "--";
 }
 
-// ✅ UPDATED: supports max/min time AND blanks "Now" in day/range mode
 function updateCards({
   latest,
   tMax, tMaxMs, tMin, tMinMs,
@@ -883,7 +856,6 @@ function updateCards({
   pMax, pMaxMs, pMin, pMinMs,
   lMax, lMaxMs, lMin, lMinMs,
 }) {
-  // Always ensure labels match current view mode (safe even if HTML not updated yet)
   setCardLabelsForView();
 
   if (!latest) {
@@ -891,21 +863,18 @@ function updateCards({
     return;
   }
 
-  // Live mode: show live "Now" big values
   if (VIEW_MODE === "live") {
     if (tempNowEl) tempNowEl.textContent = `${formatNum(latest.Temperature, 2)} °C`;
     if (humNowEl) humNowEl.textContent = `${formatNum(latest.Humidity, 2)} %`;
     if (pressNowEl) pressNowEl.textContent = `${formatNum(latest.Pressure, 1)} hPa`;
     if (lightNowEl) lightNowEl.textContent = `${formatNum(latest.Light, 1)} lux`;
   } else {
-    // Day/Range: blank the big "Now" value to avoid confusion
     if (tempNowEl) tempNowEl.textContent = "--";
     if (humNowEl) humNowEl.textContent = "--";
     if (pressNowEl) pressNowEl.textContent = "--";
     if (lightNowEl) lightNowEl.textContent = "--";
   }
 
-  // Max/Min formatting: value + "at HH:mm" (all modes)
   if (tempMaxEl) tempMaxEl.textContent = `${formatNum(tMax, 2)} °C at ${fmtHM(tMaxMs)}`;
   if (tempMinEl) tempMinEl.textContent = `${formatNum(tMin, 2)} °C at ${fmtHM(tMinMs)}`;
 
@@ -921,7 +890,6 @@ function updateCards({
 
 /* =======================
    Device status subscribe (latest 1 doc)
-   ✅ independent from view (live/day/range)
 ======================= */
 function subscribeDeviceStatus() {
   if (unsubscribeStatus) {
@@ -953,7 +921,6 @@ function subscribeDeviceStatus() {
 
 /* =======================
    Firestore subscribe (selected device)
-   ✅ FIX: day/range uses window query (full day, no partial)
 ======================= */
 function subscribeToTodayData() {
   if (unsubscribeData) {
@@ -961,7 +928,6 @@ function subscribeToTodayData() {
     unsubscribeData = null;
   }
 
-  // ensure labels reflect view immediately (even before data arrives)
   setCardLabelsForView();
 
   const dataCol = collection(db, "public_readings", currentDeviceId, "data");
@@ -991,7 +957,6 @@ function subscribeToTodayData() {
         lastDataMs = null;
         CURRENT_VIEW_ROWS = [];
 
-        // status is from subscribeDeviceStatus() (latest 1 doc)
         renderStatus();
         if (lastUpdatedText) lastUpdatedText.textContent = "--";
 
@@ -1006,7 +971,30 @@ function subscribeToTodayData() {
       const rows = [];
       snap.forEach((doc) => rows.push(doc.data()));
 
-      if (VIEW_MODE === "live") rows.reverse();
+      if (VIEW_MODE === "live") rows.reverse(); // now ASC order in live
+
+      /* ==================================================
+         ✅ NEW (Option B):
+         Live is paused => DO NOT redraw, just buffer rows
+      =================================================== */
+      if (VIEW_MODE === "live" && LIVE_MODE === false) {
+        PAUSED_LIVE_BUFFER = rows;
+        PAUSED_LIVE_LAST_MS = tsToMs(rows[rows.length - 1]?.timestamp) || null;
+
+        // status keeps updating via subscribeDeviceStatus()
+        renderStatus();
+
+        if (lastUpdatedText && PAUSED_LIVE_LAST_MS) {
+          lastUpdatedText.textContent = `Paused (new data at ${fmtDateTime(PAUSED_LIVE_LAST_MS)})`;
+        }
+        return;
+      }
+
+      // if live resumed, clear buffer (safe)
+      if (VIEW_MODE === "live" && LIVE_MODE === true) {
+        PAUSED_LIVE_BUFFER = null;
+        PAUSED_LIVE_LAST_MS = null;
+      }
 
       let finalRows = rows;
 
@@ -1028,7 +1016,6 @@ function subscribeToTodayData() {
 
       let latest = null;
 
-      // ✅ NEW: max/min and time holders
       let tMax = null, tMin = null, tMaxMs = null, tMinMs = null;
       let hMax = null, hMin = null, hMaxMs = null, hMinMs = null;
       let pMax = null, pMin = null, pMaxMs = null, pMinMs = null;
@@ -1038,7 +1025,6 @@ function subscribeToTodayData() {
         const ms = tsToMs(d.timestamp);
         if (!ms) return;
 
-        // latest is used for "Now" only in live mode (we blank it in day/range)
         latest = d;
 
         if (typeof d.Temperature === "number") {
@@ -1096,7 +1082,7 @@ function subscribeToTodayData() {
 
       lastDataMs = tsToMs(latest?.timestamp);
 
-      renderStatus(); // uses deviceLastSeenMs (not lastDataMs)
+      renderStatus();
       if (lastUpdatedText) lastUpdatedText.textContent = fmtDateTime(lastDataMs);
 
       updateCards({
@@ -1140,7 +1126,10 @@ function setupDeviceDropdown() {
   deviceSelect.addEventListener("change", () => {
     currentDeviceId = deviceSelect.value;
 
-    // ✅ restart status subscription for new device
+    // clear paused buffer on device change
+    PAUSED_LIVE_BUFFER = null;
+    PAUSED_LIVE_LAST_MS = null;
+
     subscribeDeviceStatus();
 
     VIEW_MODE = "live";
@@ -1172,6 +1161,10 @@ function setupGoLiveButton() {
   if (!goLiveBtn) return;
 
   goLiveBtn.addEventListener("click", () => {
+    // clear paused buffer when user explicitly resumes live
+    PAUSED_LIVE_BUFFER = null;
+    PAUSED_LIVE_LAST_MS = null;
+
     VIEW_MODE = "live";
     selectedDayStartMs = null;
     rangeStartMs = null;
@@ -1221,6 +1214,10 @@ function startDayWatcher() {
     const k = dayKeyNow();
     if (k !== currentDayKey) {
       currentDayKey = k;
+
+      // clear paused buffer on day rollover
+      PAUSED_LIVE_BUFFER = null;
+      PAUSED_LIVE_LAST_MS = null;
 
       VIEW_MODE = "live";
       selectedDayStartMs = null;
@@ -1298,6 +1295,10 @@ function renderCalendar() {
 
     cell.addEventListener("click", () => {
       if (disabled) return;
+
+      // leaving live => clear paused buffer
+      PAUSED_LIVE_BUFFER = null;
+      PAUSED_LIVE_LAST_MS = null;
 
       VIEW_MODE = "day";
       selectedDayStartMs = startOfDayMs(calYear, calMonth, day);
@@ -1396,6 +1397,10 @@ function validateAndApplyRangeFromInputs() {
   }
 
   setMsg("");
+
+  // leaving live => clear paused buffer
+  PAUSED_LIVE_BUFFER = null;
+  PAUSED_LIVE_LAST_MS = null;
 
   VIEW_MODE = "range";
   selectedDayStartMs = null;
@@ -1665,7 +1670,7 @@ function boot() {
   setupDeviceDropdown();
   setupGoLiveButton();
   setupCalendarNav();
-  setupRangeAutoUpdate(); // kept
+  setupRangeAutoUpdate();
   setupLangSelect();
   setupCsvButtons();
 
@@ -1676,9 +1681,8 @@ function boot() {
   calMonth = nowJ.month - 1;
   renderCalendar();
 
-  // ✅ start both:
   subscribeToTodayData();
-  subscribeDeviceStatus(); // ✅ IMPORTANT (keeps status correct for day/range too)
+  subscribeDeviceStatus();
 
   startGlobalMonitoring();
 
@@ -1687,7 +1691,7 @@ function boot() {
   startDayWatcher();
 
   renderGoLiveButton();
-  setCardLabelsForView(); // ✅ NEW
+  setCardLabelsForView();
   updateAIUI();
   runGlobalAI();
 }

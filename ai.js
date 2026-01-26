@@ -1,19 +1,3 @@
-// ai.js (FULL - OLD FEATURES KEPT + NEW THRESHOLD-BASED GLOBAL ANOMALY)
-// Upgraded AI module:
-// 1) Selected-device feed: AI.update({...}) -> ONE sentence, strict EN/JP, includes numbers + exact time window.
-// 2) Global monitoring: AI.evaluateGlobal({...}) -> watches ALL devices, returns toast/modal/critical escalation.
-// Pure logic only (NO DOM, NO Firestore, NO Chart.js).
-//
-// ✅ YOUR NEW REQUIREMENT (IMPLEMENTED):
-// - Upload interval = 10 sec.
-// - Global anomalies MUST be based on REAL thresholds (not sensitive z-score).
-// - Two types of detection:
-//   A) Sudden spike (10 sec step): if |last - prev| >= spike threshold => MODAL immediately.
-//   B) Slow trend: compare now vs 5 min ago and/or 10 min ago.
-//      If |delta| >= slow threshold => MODAL (or CRITICAL if persists long).
-//
-// ✅ Offline "popup/modal" threshold is controlled by dashboard.js via alertMs.
-// - buildOfflineEvent() uses alertMs (no hardcoded 120000ms).
 
 export function createAI() {
   /* =========================
